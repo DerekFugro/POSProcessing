@@ -1,0 +1,21 @@
+# Python / local environment
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Per-PC settings and downloaded data
+settings.json
+cache/
+
+# Test outputs
+test_run/
+test_rt27/
+test_run_*.txt
+
+# Third-party binaries and installers (kept on the PC / share, not in git)
+installers/
+tools/rtklib/*.exe
+
+# Applanix manuals are copyrighted - not for a public repo (see D:\Manuals)
+docs/reference/
