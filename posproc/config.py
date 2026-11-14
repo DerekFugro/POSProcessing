@@ -41,7 +41,8 @@ class Settings:
     # Live logger (PCS Ethernet logging port)
     logger_host: str = "192.168.0.40"
     logger_port: int = 5603
-    logger_out: str = r"C:\POSLogs"
+    logger_out: str = ""                     # user picks it; each run makes <name>_YYYYMMDD_HHMMSS inside
+    logger_session_name: str = "SurveyorPOS"
     # Live health from the PCS display port
     display_port: int = 5600
     display_listen_on_start: bool = True

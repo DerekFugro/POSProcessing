@@ -22,6 +22,7 @@ from pathlib import Path
 
 DEFAULT_HOST = "192.168.0.40"        # your trucks' PCS (Applanix factory default is 192.168.53.100)
 DEFAULT_PORT = 5603                  # Ethernet Logging Data Port (POS ICD)
+DEFAULT_SESSION_NAME = "SurveyorPOS"  # each Start makes <out>\<name>_YYYYMMDD_HHMMSS
 FILE_SIZE = 8 * 1024 * 1024          # same ~8 MB split as PCS USB logging
 RECV_SIZE = 65536
 CONNECT_TIMEOUT_S = 5.0
@@ -45,6 +46,7 @@ class LiveStatus:
     rate_kbps: float = 0.0
     files: list[str] = field(default_factory=list)
     current_file: str = ""
+    session_folder: str = ""
     group_rates: dict[int, float] = field(default_factory=dict)
     lat: float = float("nan")
     lon: float = float("nan")
@@ -60,6 +62,15 @@ class LiveStatus:
     since_data_s: float = 0.0
     warnings: list[str] = field(default_factory=list)
     error: str = ""
+
+
+def session_folder(out_root: Path, name: str, when: dt.datetime) -> Path:
+    """out_root / <name>_YYYYMMDD_HHMMSS, with _2, _3 ... added if that folder already exists."""
+    base = Path(out_root) / f"{name}_{when:%Y%m%d_%H%M%S}"
+    folder, n = base, 2
+    while folder.exists():
+        folder, n = base.with_name(f"{base.name}_{n}"), n + 1
+    return folder
 
 
 class _StreamWatcher:
@@ -126,12 +137,15 @@ class _StreamWatcher:
 
 
 class PcsLogger:
-    """Connects to the PCS logging port and writes LV_1_YYYYMMDDHHMM.nnn files."""
+    """Connects to the PCS logging port and writes LV_1_YYYYMMDDHHMM.nnn files into a new
+    <session_name>_YYYYMMDD_HHMMSS folder under out_root (one folder per logger run)."""
 
     def __init__(self, host: str, out_root: Path, port: int = DEFAULT_PORT, prefix: str = "LV_1",
-                 file_size: int = FILE_SIZE, on_status=None, log=print):
+                 file_size: int = FILE_SIZE, on_status=None, log=print,
+                 session_name: str = DEFAULT_SESSION_NAME):
         self.host, self.port, self.prefix, self.file_size = host, port, prefix, file_size
         self.out_root = Path(out_root)
+        self.session_name = session_name.strip() or DEFAULT_SESSION_NAME
         self.on_status, self.log = on_status or (lambda s: None), log
         self._stop = threading.Event()
         self._fh = None
@@ -202,8 +216,10 @@ class PcsLogger:
     # ---------- files ----------
     def _new_session(self):
         now = dt.datetime.now()
-        self._folder = self.out_root / now.strftime("%y%m%d")
+        self._folder = session_folder(self.out_root, self.session_name, now)
         self._folder.mkdir(parents=True, exist_ok=True)
+        self.watch.status.session_folder = str(self._folder)
+        self.log(f"Session folder {self._folder}")
         base = f"{self.prefix}_{now:%Y%m%d%H%M}"
         while any(self._folder.glob(base + ".*")):          # never overwrite an earlier log
             now += dt.timedelta(minutes=1)
@@ -252,9 +268,10 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Log POS LV Ethernet logging port to .000 files")
     ap.add_argument("--host", default=DEFAULT_HOST, help=f"PCS IP address (default {DEFAULT_HOST})")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
-    ap.add_argument("--out", required=True, help="Folder for logs (a YYMMDD subfolder is made)")
+    ap.add_argument("--out", required=True, help="Folder for logs (a <name>_YYYYMMDD_HHMMSS subfolder is made)")
+    ap.add_argument("--name", default=DEFAULT_SESSION_NAME, help=f"Session folder name (default {DEFAULT_SESSION_NAME})")
     a = ap.parse_args(argv)
-    lg = PcsLogger(a.host, Path(a.out), a.port)
+    lg = PcsLogger(a.host, Path(a.out), a.port, session_name=a.name)
     last = [0.0]
 
     def show(s: LiveStatus):
