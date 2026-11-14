@@ -21,14 +21,19 @@ calibrations where the truck collected with OmniSTAR VBS real-time corrections.
    decoded without POSPac).
 6. **Writes** `<session>_PPK_trajectory_WGS84.csv`, `PPK_Report.html`, and for each CSV log
    `<name>_PPK.csv` (same columns; only Latitude, Longitude, Elevation replaced).
+7. **Live POS tab:** POS health and a live map from the PCS display broadcast, and logging of the
+   PCS Ethernet logging port to `.000` files on this PC.
 
-## Setup (once)
+## Setup (once per PC)
 
 1. Python 3.12 (`py -3.12` must work).
-2. **Trimble Convert to RINEX** (free from Trimble). Default path in Settings:
-   `C:\Program Files (x86)\Trimble\convertToRINEX\convertToRinex.exe`.
-3. **RTKLIB-EX** (rtklibexplorer, release 2.5.1 or newer). Put `rnx2rtkp.exe` in
-   `tools\rtklib\` or set its path in Settings.
+2. From `installers\` (kept on the PC/share, not in git), install in this order:
+   1. `TrimbleCFGUpdate.exe` - Trimble Office Configuration Utility. **Required**: without it
+      Convert to RINEX crashes at start-up ("type initializer ... threw an exception").
+   2. `convertToRinex_v4_0_1_10_sign.msi` - Trimble Convert to RINEX. Installs to
+      `C:\Program Files (x86)\Trimble\ConvertToRinex\convertToRinex.exe` (the default in Settings).
+3. RTKLIB-EX 2.5.1 (github.com/rtklibexplorer/RTKLIB): unzip and put `rnx2rtkp.exe` in
+   `tools\rtklib\` (or set its path in Settings).
 4. Double-click `launch.bat` (first run builds `.venv` and installs packages).
 
 ## Use
@@ -38,6 +43,20 @@ calibrations where the truck collected with OmniSTAR VBS real-time corrections.
    output suffix are skipped by *Add folder*.
 3. Pick an output folder and trajectory rate, press **Run**.
 4. Check **Report**, **Map** and **Log** tabs. Orange items in the report need a look.
+
+Command line (same steps, no GUI):
+`.venv\Scripts\python.exe -m posproc.cli --pcs "<POS folder>" --csv "<CSV folder>" --out "<output>" --rate 10`
+
+## Outputs
+
+| File | Contents |
+|---|---|
+| `PPK_Report.html` | Before/after accuracy, PPK fix rate, base used, correction plots, CSV match table |
+| `<session>\<session>_PPK_trajectory_WGS84.csv` | GPS week/seconds, lat, lon, ellipsoid height, roll/pitch/heading (real-time), sigma N/E/D, correction N/E/Up, PPK-covered flag |
+| `csv\<name>_PPK.csv` | Copy of each CSV log with only Latitude, Longitude, Elevation (feet) replaced |
+| `<session>\rinex\`, `<session>_<BASE>.pos`, `rtklib.conf`, `.rt27` | Working files (rover RINEX, RTKLIB result, settings, raw GNSS) |
+
+Downloaded CORS data and map tiles are cached once in `cache\`.
 
 ## Live POS tab
 
@@ -89,18 +108,31 @@ to 1e-8 deg). PC time is not used. Roll/pitch in the CSV are in a different fram
 ignored. Elevation units are detected (the ARAN logs are in **feet**). A file is flagged if
 its rows match more than one visit to the same spot or match worse than the tolerance.
 
-## Limits to know
+## Results so far and limits
 
-- Nearest operational NOAA CORS to the Richmond VA site is **LS02, ~39 km**. Integer
-  ambiguity fixes are unlikely at that distance: expect decimetre (float) accuracy, still
-  better than OmniSTAR VBS. A closer base (e.g. Virginia VBRN) can be used through
-  *Settings > Manual base RINEX + XYZ*.
-- NOAA thins data older than 30 days to 30-second spacing.
-- Output frame is ITRF2020 at the epoch of the data, reported as WGS84 (G2296) — same at
+Test data: ARAN69, 2025-05-19, Richmond VA, 175 minutes.
+
+- Nearest working NOAA CORS is **LS02, ~39 km**; NOAA thins data older than 30 days to
+  30-second spacing. Even so RTKLIB got **83% fixed / 17% float**.
+- Real-time OmniSTAR accuracy (POS Group 2, median): 0.23 / 0.24 / 0.29 m N/E/D.
+- Checking LS02 against a second base (LOYO, 51 km): horizontal agrees to 4.4 cm median
+  (95% within 10 cm); heights differ by ~10 cm. **Realistic accuracy: ~3-5 cm horizontal,
+  ~5-10 cm vertical.** Not yet checked against a surveyed point.
+- The report's "After" numbers are RTKLIB's own sigmas (~7 mm) and are too optimistic.
+- Antenna phase-centre models are not applied yet (likely cause of the ~10 cm height gap).
+- Attitude is not re-processed (raw IMU format is export-controlled).
+- Output frame is ITRF2020 at the epoch of the data, reported as WGS84 (G2296) - same at
   the centimetre level.
-- Base and rover antenna phase-centre models are not applied (few-cm vertical effect).
+- The POS on ARAN69 logs **UTC** time; the app converts to GPS time using the leap seconds
+  in Group 3.
+- A different base (e.g. your own receiver) can be used via *Settings > Manual base RINEX + XYZ*.
 
 ## Tests
 
 `run_tests.bat` (uses the ARAN69 2025-05-19 sample data). Developer: `pytest -q` with
-`POSPROC_SAMPLES` set to the Surveyor sample folder.
+`POSPROC_SAMPLES` set to the Surveyor sample folder; without it the sample-data tests skip.
+
+## For developers
+
+See `CLAUDE.md` (layout, conventions, verified facts, to-do list) and `docs/CONTEXT.md`
+(references and data notes).
