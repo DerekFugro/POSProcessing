@@ -67,6 +67,9 @@ While recording, **Process** and **Settings** are locked; while processing, **Re
 3. Pick an output folder and trajectory rate, press **Run**.
 4. Check the **Report**, **Map** and **Log** sub-tabs. Orange items in the report need a look.
 
+Started by another app (Surveyor): `pythonw.exe app.py --surveyor --out F:\` - records at once and
+is controlled over stdin/stdout. See `docs/Comunication4OtherApps.md`.
+
 Command line (same steps, no GUI):
 `.venv\Scripts\python.exe -m posproc.cli --pcs "<POS folder>" --csv "<CSV folder>" --out "<output>" --rate 10`
 

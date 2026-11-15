@@ -35,9 +35,10 @@ TCP 5603). Owner: Derek Pescod (hardware / field). Repo: github.com/DerekFugro/P
 | `posproc/report.py` | HTML report |
 | `posproc/logger.py` | TCP 5603 logger + live stream parser (`_StreamWatcher`) |
 | `posproc/display.py` | UDP 5600 display listener + health grading |
+| `posproc/control.py`, `posproc/marks.py` | Line protocol and mark CSVs for apps that control recording (Surveyor) - see `docs/Comunication4OtherApps.md` |
 | `posproc/cli.py` | `python -m posproc.cli --pcs ... --csv ... --out ...` |
 | `posproc/config.py` | `Settings` dataclass <-> `settings.json` (per PC, not in git) |
-| `gui/` | PySide6 GUI, four tabs: `main_window.py` (tabs + locking while busy), `record_panel.py` (Record: status light, folder, Start/Stop, live map), `process_panel.py` (Process: files, Run, Map/Report/Log), `logger_panel.py` (Diagnostics, read-only; also owns the recording engine), `settings_panel.py` (Settings: Recording + Processing), `health_panel.py`, `map_view.py`, `tiles.py` (OSM tile cache server), `worker.py`, `styles.py` |
+| `gui/` | PySide6 GUI, four tabs: `main_window.py` (tabs + locking while busy), `record_panel.py` (Record: status light, folder, Start/Stop, live map), `process_panel.py` (Process: files, Run, Map/Report/Log), `logger_panel.py` (Diagnostics, read-only; also owns the recording engine), `settings_panel.py` (Settings: Recording + Processing), `surveyor_link.py` (stdin/stdout link for `--surveyor`), `health_panel.py`, `map_view.py`, `tiles.py` (OSM tile cache server), `worker.py`, `styles.py` |
 | `gui/web/leaflet/` | Bundled Leaflet 1.9.4 (from npm, checksum checked) |
 | `tools/pcs_simulator.py` | Fake PCS: replays `.000` files on TCP 5603 and UDP 5600 |
 | `tests/` | pytest; sample-data tests need `POSPROC_SAMPLES` |

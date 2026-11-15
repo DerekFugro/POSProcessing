@@ -20,6 +20,7 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .marks import TIME_TYPES, MarkRecorder
 from .pcs import ZERO_LEVER_WARNING, lever_arms_from_msg20
 
 DEFAULT_HOST = "192.168.0.40"        # your trucks' PCS (Applanix factory default is 192.168.53.100)
@@ -51,6 +52,10 @@ class LiveStatus:
     session_folder: str = ""
     lever_gnss: tuple[float, float, float] | None = None   # ref->GNSS from Message 20, once seen
     nav_time: float = 0.0         # time.time() when Group 1 (navigation) last arrived; 0 = never
+    time1: float = float("nan")   # Group 1 Time 1, seconds of week
+    time_type: int = -1           # 0 POS, 1 GPS, 2 UTC (low nibble of the time-types byte)
+    roll: float = float("nan")
+    pitch: float = float("nan")
     group_rates: dict[int, float] = field(default_factory=dict)
     lat: float = float("nan")
     lon: float = float("nan")
@@ -77,6 +82,14 @@ def session_folder(out_root: Path, name: str, when: dt.datetime) -> Path:
     return folder
 
 
+def nav_row(s: LiveStatus) -> dict:
+    """The latest navigation values as a flat dict (mark CSV row / status reply)."""
+    n, e, d = s.rms_neu
+    return {"time1_s": s.time1, "time_type": TIME_TYPES.get(s.time_type, ""), "lat_deg": s.lat, "lon_deg": s.lon,
+            "height_m": s.h, "roll_deg": s.roll, "pitch_deg": s.pitch, "heading_deg": s.heading,
+            "speed_mps": s.speed, "align_status": s.align, "rms_n_m": n, "rms_e_m": e, "rms_d_m": d}
+
+
 class _StreamWatcher:
     """Parses complete records from the live stream for the status display only."""
 
@@ -85,6 +98,7 @@ class _StreamWatcher:
         self.counts: Counter = Counter()
         self.history: deque = deque()          # (time, Counter snapshot)
         self.status = LiveStatus()
+        self.on_nav = None                     # called with a dict per Group 1 epoch (marks)
 
     def feed(self, data: bytes):
         self.buf += data
@@ -121,10 +135,14 @@ class _StreamWatcher:
         if gid == 1:
             s.nav_time = time.time()
         if gid == 1 and bc == 132:
+            s.time1 = struct.unpack_from("<d", b, j + 8)[0]
+            s.time_type = b[j + 32] & 0x0F
             s.lat, s.lon, s.h = struct.unpack_from("<ddd", b, j + 34)
-            s.heading = struct.unpack_from("<d", b, j + 34 + 24 + 12 + 16)[0]
+            s.roll, s.pitch, s.heading = struct.unpack_from("<ddd", b, j + 34 + 24 + 12)
             s.speed = struct.unpack_from("<f", b, j + 34 + 24 + 12 + 32 + 4)[0]
             s.align = b[j + 134]
+            if self.on_nav:
+                self.on_nav(nav_row(s))
         elif gid == 2 and bc == 80:
             n, e, d = struct.unpack_from("<fff", b, j + 34)
             s.rms_neu = (n, e, d)
@@ -161,6 +179,9 @@ class PcsLogger:
         self._base = ""
         self._folder: Path | None = None
         self.watch = _StreamWatcher()
+        self.marks = MarkRecorder()
+        self.closed_marks: list[dict] = []
+        self.watch.on_nav = self.marks.add_nav
 
     # ---------- control ----------
     def stop(self):
@@ -217,6 +238,7 @@ class PcsLogger:
                     sock.close()
         finally:
             self._close_file()
+            self.closed_marks = self.marks.close_all()
             s.connected, s.state = False, "Stopped"
             self._emit()
         return s

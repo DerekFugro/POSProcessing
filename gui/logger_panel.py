@@ -31,6 +31,7 @@ class _Bridge(QObject):
     status = Signal(object)
     message = Signal(str)
     finished = Signal()
+    mark_done = Signal(object)
 
 
 class LoggerPanel(QWidget):
@@ -38,6 +39,7 @@ class LoggerPanel(QWidget):
     running_changed = Signal(bool)      # logger started (True) or stopped (False)
     logging_status = Signal(object)     # LiveStatus from the logger, about once a second
     out_folder_changed = Signal(str)    # folder recordings are saved under
+    mark_done = Signal(object)          # a mark CSV finished its time (dict from MarkRecorder)
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -112,6 +114,7 @@ class LoggerPanel(QWidget):
         self._bridge.status.connect(self._on_bridge_status)
         self._bridge.message.connect(self.log_view.appendPlainText)
         self._bridge.finished.connect(self._on_bridge_finished)
+        self._bridge.mark_done.connect(self.mark_done.emit)
         self.health_panel.message.connect(self.log_view.appendPlainText)
         self.health_panel.pcs_found.connect(self._on_health_panel_pcs_found)
 
@@ -186,34 +189,64 @@ class LoggerPanel(QWidget):
         self._update_connection()
         self.log_view.appendPlainText(f"PCS address set to {ip} (found automatically).")
 
-    def start_logging(self) -> bool:
-        """Start recording to the current folder. Returns False if it could not start."""
+    def start_logging(self, show_errors: bool = True, remember: bool = True) -> str:
+        """Start recording to the current folder. Returns '' if started (or already running),
+        else the reason it could not start (also shown in a message box if show_errors).
+        remember=False (another app chose the folder): don't save it as the manual default."""
         if self.is_running:
-            return True
+            return ""
+        error = self._start_problem()
+        if error:
+            if show_errors:
+                QMessageBox.warning(self, WINDOW_TITLE, error)
+            return error
         host, name, out = self._host.strip(), self._session_name(), self._out
-        if not host:
-            QMessageBox.warning(self, WINDOW_TITLE, "No PCS address yet. Set it on the Settings tab.")
-            return False
-        if BAD_NAME_CHARS.search(name):
-            QMessageBox.warning(self, WINDOW_TITLE, 'The session name cannot contain \\ / : * ? " < > |')
-            return False
-        if not out:
-            QMessageBox.warning(self, WINDOW_TITLE, "Pick a folder to save recordings in.")
-            return False
-        try:
-            Path(out).mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            QMessageBox.warning(self, WINDOW_TITLE, f"Cannot use {out}:\n{exc}")
-            return False
-        self.settings.logger_host, self.settings.logger_out = host, out
-        self.settings.save()
+        if remember:
+            self.settings.logger_host, self.settings.logger_out = host, out
+            self.settings.save()
         self.log_view.clear()
         self._logger = PcsLogger(host, Path(out), self._port(), session_name=name,
                                  on_status=self._bridge.status.emit, log=self._bridge.message.emit)
+        self._logger.marks.on_done = self._bridge.mark_done.emit
         self._thread = threading.Thread(target=self._run_logger, daemon=True)
         self._thread.start()
         self._set_running(True)
-        return True
+        return ""
+
+    def _start_problem(self) -> str:
+        host, name, out = self._host.strip(), self._session_name(), self._out
+        if not host:
+            return "No PCS address yet. Set it on the Settings tab."
+        if BAD_NAME_CHARS.search(name):
+            return 'The session name cannot contain \\ / : * ? " < > |'
+        if not out:
+            return "Pick a folder to save recordings in."
+        try:
+            Path(out).mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return f"Cannot use {out}: {exc}"
+        return ""
+
+    @property
+    def live(self) -> LiveStatus | None:
+        """Logging-port status of the current/last run (50 Hz navigation, files, warnings)."""
+        return self._logger.watch.status if self._logger else None
+
+    def live_marks(self) -> list[dict]:
+        """Marks still recording their CSV."""
+        return self._logger.marks.active if self._logger and self.is_running else []
+
+    @property
+    def closed_marks(self) -> list[dict]:
+        """Marks cut short when the last run stopped."""
+        return list(getattr(self._logger, "closed_marks", []) or [])
+
+    def start_mark(self, label: str, seconds: float, snapshot: dict) -> dict:
+        """Start a mark CSV in the session folder. Raises RuntimeError if not recording yet."""
+        s = self.live
+        if not self.is_running or not s or not s.session_folder:
+            raise RuntimeError("not recording yet (no data written)")
+        return self._logger.marks.start(Path(s.session_folder), label, seconds, snapshot)
 
     def _run_logger(self):
         try:
