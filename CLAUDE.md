@@ -38,6 +38,8 @@ TCP 5603). Owner: Derek Pescod (hardware / field). Repo: github.com/DerekFugro/P
 | `posproc/report.py` | HTML report |
 | `posproc/logger.py` | TCP 5603 logger + live stream parser (`_StreamWatcher`) |
 | `posproc/display.py` | UDP 5600 display listener + health grading |
+| `packaging/` | Installer: `build.ps1` (PyInstaller + Inno Setup -> `packaging\Output\POSProcessing_Setup_<ver>.exe`), `POSProcessing.spec`, `POSProcessing.iss`. Installed: `ACSApps\POSProcessing`; data: `ProgramData\Fugro Roadware\POSProcessing` (`posproc/config.py`) |
+| `posproc/stdio.py` | stdin/stdout for the windowless exe (`--surveyor`, `--cli`) |
 | `posproc/control.py`, `posproc/marks.py` | Line protocol and mark CSVs for apps that control recording (Surveyor) - see `docs/Comunication4OtherApps.md` |
 | `posproc/cli.py` | `python -m posproc.cli --pcs ... --csv ... --out ...` |
 | `posproc/config.py` | `Settings` dataclass <-> `settings.json` (per PC, not in git) |
@@ -105,4 +107,4 @@ RINEX and `.pos` results are reused on re-runs when inputs are unchanged.
 4. Antenna phase-centre models (ANTEX) for base and rover.
 5. Test POS units of other years / firmware.
 6. Name GNSS mode 12; GPS week rollover inside a session; download base stations lazily.
-7. Installer (PyInstaller + Inno Setup) after the truck test.
+7. Installer: built 2026-11-15 (`packaging\build.ps1`); not yet installed on a second PC.

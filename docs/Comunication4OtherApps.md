@@ -23,21 +23,27 @@ recorded `.000` files; nothing is processed during the drive.
 
 ## Starting the app
 
-Run the app's own Python from its folder - **not** `launch.bat` (it uses `start`, which
-drops the pipes):
+**Installed app (normal case, from `POSProcessing_Setup_<version>.exe`):**
 
 | Item | Value |
 |---|---|
-| Program | `E:\DP\POSProcessor\.venv\Scripts\pythonw.exe` |
-| Arguments | `app.py --surveyor --out F:\` |
-| Working folder | `E:\DP\POSProcessor` |
+| Program | `C:\Program Files\Fugro Roadware\ACSApps\POSProcessing\POSProcessing.exe` |
+| Arguments | `--surveyor --out F:\` |
+| Working folder | any (e.g. the program folder) |
 | stdin / stdout | pipes, text, UTF-8, one line per message (output is plain ASCII JSON) |
+
+Tested 2026-11-15 with the built exe (protocol 2 run: hello, logging, mark into a position
+folder with summary, missing-folder error, quit, bye, exit 0). The exe has no console window.
+
+**From the source folder (development PC only):** program
+`E:\DP\POSProcessor\.venv\Scripts\pythonw.exe`, arguments `app.py --surveyor --out F:\`, working
+folder `E:\DP\POSProcessor`. Not `launch.bat` (it uses `start`, which drops the pipes).
 
 - `--out` is the **root** (drive or folder). The app makes `SurveyorPOS_YYYYMMDD_HHMMSS`
   inside it, exactly as when a person presses START RECORDING. The session name
   (`SurveyorPOS`) comes from the app's Settings tab.
-- `.venv` must exist: run `launch.bat` once by hand on a new PC (it builds it).
-- Use `pythonw.exe` so no console window opens. stderr is not used for messages.
+- From source, `.venv` must exist: run `launch.bat` once by hand (it builds it). Use
+  `pythonw.exe` so no console window opens. stderr is not used for messages.
 - The app's saved manual "Save to" folder is **not** changed by `--out`.
 - Only one app may control recording at a time; the PCS logging port takes one connection.
   Do not run a second copy, and do not record from POSView's Ethernet logging at the same time.
@@ -47,9 +53,9 @@ Minimal Python (Surveyor is Python 3.12 / PySide6; `QProcess` works the same way
 ```python
 import json, subprocess
 
-APP = r"E:\DP\POSProcessor"
-pos = subprocess.Popen([APP + r"\.venv\Scripts\pythonw.exe", "app.py", "--surveyor", "--out", "F:\\"],
-                       cwd=APP, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+EXE = r"C:\Program Files\Fugro Roadware\ACSApps\POSProcessing\POSProcessing.exe"
+pos = subprocess.Popen([EXE, "--surveyor", "--out", "F:\\"],
+                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
 
 def send(cmd: dict):
     pos.stdin.write(json.dumps(cmd) + "\n")

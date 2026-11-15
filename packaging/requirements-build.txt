@@ -1,0 +1,2 @@
+# only needed on the PC that builds Setup.exe
+pyinstaller>=6.10

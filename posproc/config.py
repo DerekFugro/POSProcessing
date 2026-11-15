@@ -1,25 +1,48 @@
-"""App settings, stored as settings.json beside the app. Edit there or in the GUI."""
+"""App settings, stored as settings.json. Edit there or in the GUI.
+
+Where things live:
+  run from the source folder:  settings.json, cache\\ and tools\\rtklib\\ beside the code (as before)
+  installed (PyInstaller exe):  program in C:\\Program Files\\Fugro Roadware\\ACSApps\\POSProcessing\\
+                                settings.json and cache\\ in C:\\ProgramData\\Fugro Roadware\\POSProcessing\\
+                                (shared by all users; Program Files is read-only for them)
+"""
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-APP_DIR = Path(__file__).resolve().parent.parent
-SETTINGS_FILE = APP_DIR / "settings.json"
+FROZEN = getattr(sys, "frozen", False)
+SOURCE_DIR = Path(__file__).resolve().parent.parent
+INSTALL_DIR = Path(sys.executable).resolve().parent if FROZEN else SOURCE_DIR     # program files
+DATA_DIR = (Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "Fugro Roadware" / "POSProcessing"
+            if FROZEN else SOURCE_DIR)                                             # writable data
+APP_DIR = INSTALL_DIR          # kept for older code
+SETTINGS_FILE = DATA_DIR / "settings.json"
+
+
+def app_version() -> str:
+    """'2026.11.15-abc1234' from the VERSION file the installer build writes; 'dev' when run from source."""
+    base = Path(getattr(sys, "_MEIPASS", SOURCE_DIR))
+    try:
+        return (base / "VERSION").read_text(encoding="ascii").strip() or "dev"
+    except OSError:
+        return "dev"
 
 
 @dataclass
 class Settings:
     # External tools (Windows)
     convert_to_rinex_exe: str = r"C:\Program Files (x86)\Trimble\ConvertToRinex\convertToRinex.exe"
-    rnx2rtkp_exe: str = str(APP_DIR / "tools" / "rtklib" / "rnx2rtkp.exe")
+    rnx2rtkp_exe: str = str(INSTALL_DIR / "tools" / "rtklib" / "rnx2rtkp.exe")
     rinex_version: str = "3.04"
     rt27_extension: str = ".rt27"           # extension ConvertToRINEX sees on the extracted stream
     # CORS
     cors_bucket: str = "https://noaa-cors-pds.s3.amazonaws.com"
-    cache_dir: str = str(APP_DIR / "cache")
-    tile_cache_dir: str = str(APP_DIR / "cache" / "tiles_osm")
+    cache_dir: str = str(DATA_DIR / "cache")
+    tile_cache_dir: str = str(DATA_DIR / "cache" / "tiles_osm")
     max_baseline_km: float = 100.0
     stations_to_try: int = 3
     manual_base_rinex: list[str] = field(default_factory=list)   # optional: your own base files
@@ -59,4 +82,5 @@ class Settings:
         return s
 
     def save(self, path: Path = SETTINGS_FILE) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")

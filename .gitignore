@@ -21,3 +21,9 @@ tools/rtklib/*.exe
 
 # Applanix manuals are copyrighted - not for a public repo (see D:\Manuals)
 docs/reference/
+
+# Installer build output (packaging\build.ps1)
+packaging/build/
+packaging/dist/
+packaging/Output/
+VERSION

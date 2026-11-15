@@ -38,6 +38,19 @@ While recording, **Process** and **Settings** are locked; while processing, **Re
 
 ## Setup (once per PC)
 
+**Normal PCs: run `POSProcessing_Setup_<version>.exe`** (admin). It installs the app to
+`C:\Program Files\Fugro Roadware\ACSApps\POSProcessing\` (with RTKLIB), makes
+`C:\ProgramData\Fugro Roadware\POSProcessing\` for settings, the NOAA base-data cache and map
+tiles (shared by all users), and installs the two Trimble tools if they are missing. No
+Python needed. The Setup contains Trimble software: share it inside Fugro only, never on
+GitHub. Build it with `powershell -ExecutionPolicy Bypass -File packaging\build.ps1` (needs the
+committed code, Inno Setup 6 and the files in `installers\`).
+
+The installed `POSProcessing.exe` also takes `--surveyor --out <drive>` (see
+`docs/Comunication4OtherApps.md`) and `--cli --pcs ... --out ...` (processing without the window).
+
+**Development PC (run from source):**
+
 1. Python 3.12 from python.org (with the `py` launcher), **or** uv - if `py -3.12` is missing,
    `launch.bat` uses uv to install Python into `.uv\python` inside the app folder.
 2. From `installers\` (kept on the PC/share, not in git), install in this order:

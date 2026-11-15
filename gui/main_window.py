@@ -12,7 +12,7 @@ import os
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QTabWidget
 
-from posproc.config import Settings
+from posproc.config import Settings, app_version
 from posproc.control import HEARTBEAT_S, PROTOCOL_VERSION
 from posproc.display import Health
 from posproc.logger import LiveStatus, nav_row
@@ -95,7 +95,7 @@ class MainWindow(QMainWindow):
 
     # --- Styling ---
     def _apply_styles(self):
-        self.setWindowTitle(WINDOW_TITLE)
+        self.setWindowTitle(f"{WINDOW_TITLE}  {app_version()}")
         self.resize(*WINDOW_SIZE)
         self.setStyleSheet(styles.APP)
 
@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
         if self.link:
             self.record_panel.set_controller(CONTROLLER_NAME, self.surveyor_out)
             self.link.start()
-            self.link.send("hello", None, protocol=PROTOCOL_VERSION, pid=os.getpid(), out=self.surveyor_out,
+            self.link.send("hello", None, protocol=PROTOCOL_VERSION, version=app_version(), pid=os.getpid(), out=self.surveyor_out,
                            heartbeat_s=HEARTBEAT_S)
             self.heartbeat_timer.start(int(HEARTBEAT_S * 1000))
             QTimer.singleShot(0, self._start_for_link)
