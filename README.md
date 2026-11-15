@@ -21,12 +21,25 @@ calibrations where the truck collected with OmniSTAR VBS real-time corrections.
    decoded without POSPac).
 6. **Writes** `<session>_PPK_trajectory_WGS84.csv`, `PPK_Report.html`, and for each CSV log
    `<name>_PPK.csv` (same columns; only Latitude, Longitude, Elevation replaced).
-7. **Live POS tab:** POS health and a live map from the PCS display broadcast, and logging of the
-   PCS Ethernet logging port to `.000` files on this PC.
+7. **Records on the truck:** a simple **Record** tab (status light, folder, one Start/Stop button,
+   live map) logs the PCS Ethernet logging port to `.000` files on this PC.
+
+The app has four tabs and opens on **Record**:
+
+| Tab | For | What it does |
+|---|---|---|
+| **Record** | Field users | Status light, Save to folder, START / STOP RECORDING, live map |
+| **Process** | Office | POS files, CSV logs, Run, then Map / Report / Log |
+| **Diagnostics** | Troubleshooting | POS health rows, logging-port groups and warnings, message log (read-only) |
+| **Settings** | Setup | Recording (PCS IP, port, session name) and Processing options |
+
+While recording, **Process** and **Settings** are locked; while processing, **Record** and
+**Settings** are locked. **Diagnostics** is always open.
 
 ## Setup (once per PC)
 
-1. Python 3.12 (`py -3.12` must work).
+1. Python 3.12 from python.org (with the `py` launcher), **or** uv - if `py -3.12` is missing,
+   `launch.bat` uses uv to install Python into `.uv\python` inside the app folder.
 2. From `installers\` (kept on the PC/share, not in git), install in this order:
    1. `TrimbleCFGUpdate.exe` - Trimble Office Configuration Utility. **Required**: without it
       Convert to RINEX crashes at start-up ("type initializer ... threw an exception").
@@ -38,11 +51,21 @@ calibrations where the truck collected with OmniSTAR VBS real-time corrections.
 
 ## Use
 
+**Recording (Record tab)**
+
+1. Wait for the light to go green (**POS ready**).
+2. Check **Save to** (e.g. `F:\`). The line below shows the folder the recording will make and the
+   free space in hours.
+3. Press **START RECORDING**. Press **STOP RECORDING** when done (it asks to confirm).
+4. Optional: **Send this recording to the Process tab**.
+
+**Processing (Process tab)**
+
 1. **Add files / Add folder** for the POS files (a folder is searched with subfolders).
 2. Optional: add CSV GPS logs (`FL 1.csv`, `ReviewData_*.csv` ...). Files already ending in the
    output suffix are skipped by *Add folder*.
 3. Pick an output folder and trajectory rate, press **Run**.
-4. Check **Report**, **Map** and **Log** tabs. Orange items in the report need a look.
+4. Check the **Report**, **Map** and **Log** sub-tabs. Orange items in the report need a look.
 
 Command line (same steps, no GUI):
 `.venv\Scripts\python.exe -m posproc.cli --pcs "<POS folder>" --csv "<CSV folder>" --out "<output>" --rate 10`
@@ -58,24 +81,38 @@ Command line (same steps, no GUI):
 
 Downloaded CORS data and map tiles are cached once in `cache\`.
 
-## Live POS tab
+## Record and Diagnostics tabs
 
-**POS health (UDP 5600 display port).** Starts listening when the app opens. Shows the same
+**Status light (Record tab).** One light from the display data and the logger:
+
+| Light | Shown when |
+|---|---|
+| Green **POS ready** | Full navigation, GNSS with 5+ satellites, position RMS under 1 m |
+| Orange **Wait - POS is aligning** / **Few satellites** / **Position accuracy low** | Not yet in Full navigation, under 5 satellites, or RMS 1 m or more |
+| Orange **Recording, but data is missing** / **but no data** | Logging port lacks group 1, 2, 3 or 10001, or nothing received for 5 s |
+| Red **No data from the POS** / **Not recording** | No display data, or the logging port cannot be reached |
+| Grey **Looking for the POS...** | First 10 s after start, before any data |
+
+The light's 1 m limit is looser than the 0.5 m Diagnostics row on purpose (OmniSTAR G2 sits
+near 0.5 m, so the big light would flicker). Free space is shown in hours at ~130 MB/hour.
+
+**POS health (UDP 5600 display port, Diagnostics tab).** Starts listening when the app opens. Shows the same
 ~1 Hz data POSView shows: navigation/alignment status, GNSS mode and satellites, position RMS
 (N/E/D), attitude RMS (roll/pitch/heading) and position, with green/orange/red dots
 (position RMS green <= 0.5 m, orange <= 1 m; heading RMS green <= 0.1 deg, orange <= 0.5 deg).
 The display port is a broadcast, so it runs alongside POSView and any logging.
 
-**Live map.** The truck's position and trail (last hour) from the display data, coloured by
+**Live map (Record tab).** The truck's position and trail (last hour) from the display data, coloured by
 position-RMS health, with a heading tick. *Follow truck* keeps it centred; *Clear trail* resets it.
 
-**Log to this PC (TCP 5603 Ethernet logging port).** Writes `LV_1_YYYYMMDDHHMM.000, .001 ...`
-(8 MB parts) into `<folder>\YYMMDD\` - the same format as PCS USB logging. It only listens;
-nothing is sent to the POS.
+**Recording (TCP 5603 Ethernet logging port).** Each START makes a new folder
+`<Save to>\<session name>_YYYYMMDD_HHMMSS\` (default name `SurveyorPOS`) and writes
+`LV_1_YYYYMMDDHHMM.000, .001 ...` (8 MB parts) into it - the same format as PCS USB logging. It
+only listens; nothing is sent to the POS.
 
-- The PCS address is found automatically from its display broadcast and filled in (default
-  192.168.0.40 if nothing is heard yet). You can still type it.
-- Logging status shows data rate, current file and each group's rate; it warns if group
+- The PCS address is found automatically from its display broadcast (default 192.168.0.40 if
+  nothing is heard yet). PCS IP, port and session name are set on the **Settings** tab.
+- Logging status (Diagnostics tab) shows data rate, current file and each group's rate; it warns if group
   1, 2, 3 or 10001 is missing.
 - Groups on the logging port are chosen in POSView (Logging > Ethernet Logging). Keep the same set
   the crews log to USB (1, 2, 3, 4, 9, 10, 11, 99, 10001, 10006, 10009) so POSPac can also use it.
@@ -83,9 +120,9 @@ nothing is sent to the POS.
   own Ethernet logging can't run while this app is logging.
 - If the link drops, the logger reconnects by itself and keeps writing the same log. Data sent while
   disconnected may be lost (check the log), so keep PCS USB logging on as a backup.
-- **Send logged files to processing** puts them in the POS file list; press Run.
+- **Send this recording to the Process tab** (Record tab) puts the files in the POS file list; press Run.
 
-Command line: `.venv\Scripts\python.exe -m posproc.logger --host 192.168.0.40 --out C:\POSLogs`
+Command line: `.venv\Scripts\python.exe -m posproc.logger --host 192.168.0.40 --out F:\ --name SurveyorPOS`
 (Ctrl+C to stop).
 
 Test without a truck: `.venv\Scripts\python.exe tools\pcs_simulator.py --files "<folder>\LV_1_*.0*" --speed 1`
@@ -93,7 +130,7 @@ then log from host `127.0.0.1` (the simulator also sends display data to UDP 560
 
 ## Maps and offline use
 
-Both maps (Live POS and the post-processing Map tab) use OpenStreetMap tiles through a small
+Both maps (Record tab and Process > Map) use OpenStreetMap tiles through a small
 tile cache built into the app. Leaflet is bundled, so nothing else is loaded from the internet.
 Each tile is downloaded once when first viewed and saved in `cache\tiles_osm\`; after that it
 works offline (e.g. in a truck with no internet). Cached tiles are refreshed after 30 days when
@@ -125,7 +162,7 @@ Test data: ARAN69, 2025-05-19, Richmond VA, 175 minutes.
   the centimetre level.
 - The POS on ARAN69 logs **UTC** time; the app converts to GPS time using the leap seconds
   in Group 3.
-- A different base (e.g. your own receiver) can be used via *Settings > Manual base RINEX + XYZ*.
+- A different base (e.g. your own receiver) can be used via *Settings tab > Processing > Manual base RINEX + XYZ*.
 
 ## Tests
 

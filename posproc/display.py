@@ -10,7 +10,7 @@ import socket
 import threading
 import time
 
-from .logger import ALIGN_STATUS, LiveStatus, _StreamWatcher
+from .logger import ALIGN_STATUS, NO_DATA_WARN_S, LiveStatus, _StreamWatcher
 
 DISPLAY_PORT = 5600
 RECV_SIZE = 65536
@@ -21,6 +21,13 @@ POS_RMS_GOOD_M = 0.5
 POS_RMS_WARN_M = 1.0
 HEADING_RMS_GOOD_DEG = 0.1
 HEADING_RMS_WARN_DEG = 0.5
+
+# Record tab status light (one light for field users; agreed with Derek 2026-11-15):
+# green = Full navigation, GNSS OK, position RMS under 1 m; orange = aligning or RMS high;
+# red = no data from the POS. Looser than the Diagnostics rows on purpose: OmniSTAR G2 sits
+# near 0.5 m, so the 0.5 m row limit would make the big light flicker.
+RECORD_POS_RMS_OK_M = 1.0
+LOOKING_FOR_POS_S = 10.0     # grey "looking" before red "no data" when nothing has arrived yet
 
 
 class Health:
@@ -58,6 +65,37 @@ def health_summary(s: LiveStatus, age_s: float) -> dict[str, tuple[str, str]]:
     out["position"] = (f"{s.lat:.7f}, {s.lon:.7f}, h {s.h:.2f} m, {s.speed:.1f} m/s" if s.lat == s.lat else "-",
                        Health.NONE)
     return out
+
+
+def record_status(s: LiveStatus, age_s: float, waited_s: float, recording: bool = False,
+                  log: LiveStatus | None = None) -> tuple[str, str, str]:
+    """One plain-language status for the Record tab: (Health grade, title, detail).
+
+    s, age_s: latest display-port status and its age. waited_s: time since listening began.
+    recording, log: whether the logger is running and its status (TCP 5603)."""
+    if recording and log is not None and not log.connected and log.error:
+        return Health.BAD, "Not recording", "Cannot reach the POS logging port. Check the network cable. Retrying..."
+    if age_s > STALE_S:
+        if not s.source_ip and waited_s < LOOKING_FOR_POS_S:
+            return Health.NONE, "Looking for the POS...", "Waiting for data from the POS."
+        return Health.BAD, "No data from the POS", "Check the POS is switched on and the network cable is plugged in."
+    if recording and log is not None and log.warnings:
+        if log.since_data_s > NO_DATA_WARN_S:
+            return Health.WARN, "Recording, but no data", f"Nothing received for {log.since_data_s:.0f} s."
+        return Health.WARN, "Recording, but data is missing", "Some data needed for processing is missing - see Diagnostics."
+    if s.align != 0:
+        nav = ALIGN_STATUS.get(s.align, f"status {s.align}")
+        return Health.WARN, "Wait - POS is aligning", f"Navigation: {nav}. Wait for Full navigation."
+    if not s.gnss_status:
+        return Health.WARN, "Waiting for GNSS", "No GNSS status from the POS yet."
+    if s.nsv < 5:
+        return Health.WARN, "Few satellites", f"{s.gnss_status}, {s.nsv} satellites."
+    n, e, d = s.rms_neu
+    worst = max(abs(x) for x in ((n * n + e * e) ** 0.5, d)) if n == n and e == e and d == d else float("nan")
+    if not worst <= RECORD_POS_RMS_OK_M:
+        return Health.WARN, "Position accuracy low", (f"Position error about {worst:.1f} m." if worst == worst
+                                                      else "No position accuracy from the POS yet.")
+    return Health.GOOD, "POS ready", f"Full navigation · {s.gnss_status}, {s.nsv} satellites"
 
 
 class DisplayListener:

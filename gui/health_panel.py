@@ -27,6 +27,7 @@ class HealthPanel(QGroupBox):
     message = Signal(str)
     pcs_found = Signal(str)          # IP address the display data comes from
     position = Signal(float, float, float, str)   # lat, lon, heading, health colour
+    status = Signal(object, float)   # latest LiveStatus from the display port, age in seconds
 
     def __init__(self, settings, parent=None):
         super().__init__(f"POS health - display port UDP {DISPLAY_PORT} (same data POSView shows, listen only)", parent)
@@ -119,6 +120,7 @@ class HealthPanel(QGroupBox):
         if s.source_ip and s.source_ip != getattr(self, "_found_ip", ""):
             self._found_ip = s.source_ip
             self.pcs_found.emit(s.source_ip)
+        self.status.emit(s, age)
         summary = health_summary(s, age)
         if s.error:
             summary["link"] = (s.error, Health.BAD)

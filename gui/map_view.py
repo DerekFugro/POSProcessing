@@ -157,6 +157,8 @@ class LiveMapView(QWidget):
         self.clear_button = QPushButton("Clear trail")
         self.server = TileServer.get(self.tile_cache_dir)
         self._last = None
+        self._ready = False          # page loaded; points sent before that are lost
+        self._pending = None         # latest point that arrived before the page was ready
 
     def _create_layouts(self):
         self.control_layout = QHBoxLayout()
@@ -171,6 +173,8 @@ class LiveMapView(QWidget):
     def _connect_signals(self):
         self.follow_check.toggled.connect(self._on_follow_check_toggled)
         self.clear_button.clicked.connect(self._on_clear_button_clicked)
+        if HAS_WEBENGINE:
+            self.web_view.loadFinished.connect(self._on_web_view_load_finished)
 
     def _apply_styles(self):
         pass
@@ -184,6 +188,9 @@ class LiveMapView(QWidget):
     def add_point(self, lat: float, lon: float, heading: float, colour: str):
         if not HAS_WEBENGINE or not (math.isfinite(lat) and math.isfinite(lon)) or (lat == 0 and lon == 0):
             return
+        if not self._ready:
+            self._pending = (lat, lon, heading, colour)    # a parked truck never sends a new point
+            return
         point = (round(lat, 8), round(lon, 8))
         if point == self._last:
             return
@@ -191,6 +198,12 @@ class LiveMapView(QWidget):
         hdg = heading if math.isfinite(heading) else 0.0
         self.web_view.page().runJavaScript(
             f"window.livePoint && livePoint({point[0]}, {point[1]}, {hdg:.2f}, '{colour}', {LIVE_TRAIL_POINTS});")
+
+    def _on_web_view_load_finished(self, ok: bool):
+        self._ready = ok
+        if ok and self._pending:
+            point, self._pending = self._pending, None
+            self.add_point(*point)
 
     def _on_follow_check_toggled(self, on: bool):
         if HAS_WEBENGINE:

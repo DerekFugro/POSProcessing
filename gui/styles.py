@@ -21,6 +21,7 @@ QPushButton:disabled {{ color: #7f8c8d; }}
 QTabWidget::pane {{ border: 1px solid {BORDER_COLOR}; }}
 QTabBar::tab {{ background: {DARK_BG_ALT}; padding: 6px 14px; border: 1px solid {BORDER_COLOR}; }}
 QTabBar::tab:selected {{ background: {ACCENT_BLUE}; }}
+QTabBar::tab:disabled {{ background: {DARK_BG}; color: #7f8c8d; }}
 QProgressBar {{ border: 1px solid {BORDER_COLOR}; border-radius: 3px; text-align: center; background: {DARK_BG_ALT}; }}
 QProgressBar::chunk {{ background-color: {ACCENT_GREEN}; }}
 """
@@ -29,6 +30,17 @@ RUN_BUTTON = f"""
 QPushButton {{ background-color: {ACCENT_GREEN}; color: white; font-weight: bold; border-radius: 4px; padding: 8px; }}
 QPushButton:hover {{ background-color: #2ecc71; }}
 QPushButton:disabled {{ background-color: #7f8c8d; }}
+"""
+RECORD_BUTTON = f"""
+QPushButton {{ background-color: {ACCENT_GREEN}; color: white; font-size: 18pt; font-weight: bold;
+              border-radius: 8px; padding: 14px; }}
+QPushButton:hover {{ background-color: #2ecc71; }}
+QPushButton:disabled {{ background-color: #7f8c8d; }}
+"""
+STOP_RECORD_BUTTON = f"""
+QPushButton {{ background-color: {ACCENT_RED}; color: white; font-size: 18pt; font-weight: bold;
+              border-radius: 8px; padding: 14px; }}
+QPushButton:hover {{ background-color: #ff6b5b; }}
 """
 CANCEL_BUTTON = f"""
 QPushButton {{ background-color: {ACCENT_RED}; color: white; border-radius: 4px; padding: 8px; }}

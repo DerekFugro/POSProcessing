@@ -102,3 +102,59 @@ def test_logger_writes_into_session_folder(tmp_path):
     files = list(folders[0].glob("LV_1_*.000"))
     assert len(files) == 1 and files[0].stat().st_size == 1000
     assert lg.watch.status.session_folder == str(folders[0])
+
+
+def _live(align=0, gnss="OmniSTAR G2", nsv=29, rms=(0.35, 0.35, 0.45), ip="192.168.0.40"):
+    from posproc.logger import LiveStatus
+
+    return LiveStatus(align=align, gnss_status=gnss, nsv=nsv, rms_neu=rms, source_ip=ip)
+
+
+def test_record_status_light():
+    from posproc.display import Health, record_status
+    from posproc.logger import LiveStatus
+
+    assert record_status(_live(), 0.5, 60)[:2] == (Health.GOOD, "POS ready")
+    assert record_status(_live(rms=(0.6, 0.6, 0.9)), 0.5, 60)[0] == Health.GOOD     # 0.85 m: still under 1 m
+    assert record_status(_live(rms=(0.9, 0.9, 0.5)), 0.5, 60)[:2] == (Health.WARN, "Position accuracy low")
+    assert record_status(_live(align=1), 0.5, 60)[:2] == (Health.WARN, "Wait - POS is aligning")
+    assert record_status(_live(nsv=3), 0.5, 60)[:2] == (Health.WARN, "Few satellites")
+    assert record_status(_live(gnss=""), 0.5, 60)[:2] == (Health.WARN, "Waiting for GNSS")
+    # nothing heard yet: grey for the first seconds, then red
+    assert record_status(LiveStatus(), float("inf"), 2)[0] == Health.NONE
+    assert record_status(LiveStatus(), float("inf"), 30)[:2] == (Health.BAD, "No data from the POS")
+    assert record_status(_live(), 8.0, 60)[0] == Health.BAD                          # data stopped
+
+
+def test_record_status_while_recording():
+    from posproc.display import Health, record_status
+    from posproc.logger import LiveStatus
+
+    ok_log = LiveStatus(connected=True)
+    assert record_status(_live(), 0.5, 60, True, ok_log)[0] == Health.GOOD
+    lost = LiveStatus(connected=False, error="Connection lost")
+    assert record_status(_live(), 0.5, 60, True, lost)[:2] == (Health.BAD, "Not recording")
+    missing = LiveStatus(connected=True, warnings=["Not receiving group 10001 (raw GNSS)"])
+    assert record_status(_live(), 0.5, 60, True, missing)[:2] == (Health.WARN, "Recording, but data is missing")
+    quiet = LiveStatus(connected=True, since_data_s=9, warnings=["No data for 9 s"])
+    assert record_status(_live(), 0.5, 60, True, quiet)[:2] == (Health.WARN, "Recording, but no data")
+
+
+def test_record_panel_helpers(tmp_path):
+    from gui.record_panel import drive_problem, duration_text, free_space_text
+
+    assert duration_text(59) == "0 min" and duration_text(12 * 60 + 5) == "12 min"
+    assert duration_text(65 * 60) == "1 h 05 min"
+    assert drive_problem("") == "Pick a folder to save recordings in."
+    assert drive_problem(str(tmp_path)) == ""
+    text, low = free_space_text(str(tmp_path / "not_made_yet"))
+    assert "GB free" in text and "hours of recording" in text and low is False
+
+
+def test_tabs_locked_while_busy():
+    from gui.main_window import DIAGNOSTICS, PROCESS, RECORD, SETTINGS, locked_tabs
+
+    assert locked_tabs(False, False) == {}
+    assert set(locked_tabs(True, False)) == {PROCESS, SETTINGS}
+    assert set(locked_tabs(False, True)) == {RECORD, SETTINGS}
+    assert DIAGNOSTICS not in locked_tabs(True, True)
