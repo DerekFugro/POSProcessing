@@ -171,7 +171,7 @@ class RecordPanel(QWidget):
         self.send_button.hide()
         self.progress_label.setText("Not recording.")
         self._show_running(self.logger_panel.is_running)
-        self._refresh()
+        self.refresh()
         self.timer.start(REFRESH_MS)
 
     # --- Business logic ---
@@ -183,7 +183,7 @@ class RecordPanel(QWidget):
         self.folder_input.setText(folder)
         if folder != self.logger_panel.out_folder:
             self.logger_panel.set_out_folder(folder)
-        self._refresh()
+        self.refresh()
 
     def _on_browse_button_clicked(self):
         folder = QFileDialog.getExistingDirectory(self, "Where to save recordings", self._folder())
@@ -196,7 +196,7 @@ class RecordPanel(QWidget):
     def _on_logger_panel_out_folder_changed(self, text: str):
         if text.strip() != self._folder():
             self.folder_input.setText(text.strip())
-            self._refresh()
+            self.refresh()
 
     def _on_record_button_clicked(self):
         if self.logger_panel.is_running:
@@ -221,7 +221,7 @@ class RecordPanel(QWidget):
         if running:
             self._record_start = time.monotonic()
         self._show_running(running)
-        self._refresh()
+        self.refresh()
 
     def _show_running(self, running: bool):
         self.record_button.setText(STOP_TEXT if running else START_TEXT)
@@ -236,12 +236,13 @@ class RecordPanel(QWidget):
 
     def _on_logger_panel_logging_status(self, s: LiveStatus):
         self._log = s
-        self._refresh()
+        self.refresh()
 
     def _on_timer_timeout(self):
-        self._refresh()
+        self.refresh()
 
-    def _refresh(self):
+    def refresh(self):
+        """Update everything shown (also after settings change)."""
         self._refresh_light()
         self._refresh_folder()
         self._refresh_progress()
