@@ -51,6 +51,25 @@ class LeverArms:
     ref_to_gnss1: tuple[float, float, float] = (0.0, 0.0, 0.0)
     found: bool = False
 
+    @property
+    def gnss_is_zero(self) -> bool:
+        """Message 20 present but ref->GNSS is 0, 0, 0: lever arms are not set in the POS.
+        (Seen on S/N 10481 on 2026-11-15 after its settings changed; on 2026-11-14 it sent
+        -6.20, -0.81, -3.09 m.) Processing would then put the antenna at the reference point."""
+        return self.found and all(v == 0.0 for v in self.ref_to_gnss1)
+
+
+ZERO_LEVER_WARNING = ("The POS reports a ref->GNSS lever arm of 0, 0, 0 m (Message 20): its lever arms "
+                      "are probably not set. Positions would be off by several metres. Check the "
+                      "installation settings in POSView.")
+
+
+def lever_arms_from_msg20(buf: bytes, j: int) -> LeverArms:
+    """Lever arms from a Message 20 record that starts at buf[j] ('$MSG')."""
+    imu = struct.unpack_from("<3f", buf, j + 13)
+    gnss = struct.unpack_from("<3f", buf, j + 25)
+    return LeverArms(tuple(map(float, imu)), tuple(map(float, gnss)), True)
+
 
 @dataclass
 class PcsData:
@@ -203,6 +222,4 @@ def _handle_group(gid, buf, j, bc, out: PcsData, g1, g2, g3):
 
 def _handle_message(mid, buf, j, out: PcsData):
     if mid == 20 and not out.lever.found:
-        imu = struct.unpack_from("<3f", buf, j + 13)
-        gnss = struct.unpack_from("<3f", buf, j + 25)
-        out.lever = LeverArms(tuple(map(float, imu)), tuple(map(float, gnss)), True)
+        out.lever = lever_arms_from_msg20(buf, j)

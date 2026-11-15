@@ -158,3 +158,36 @@ def test_tabs_locked_while_busy():
     assert set(locked_tabs(True, False)) == {PROCESS, SETTINGS}
     assert set(locked_tabs(False, True)) == {RECORD, SETTINGS}
     assert DIAGNOSTICS not in locked_tabs(True, True)
+
+
+def _msg20(gnss, imu=(0.0, 0.0, 0.0)) -> bytes:
+    """A Message 20 record with lever arms at the offsets the POS uses (13 IMU, 25 GNSS)."""
+    import struct
+
+    rec = bytearray(48)
+    rec[0:4] = b"$MSG"
+    struct.pack_into("<HH", rec, 4, 20, len(rec) - 8)
+    struct.pack_into("<3f", rec, 13, *imu)
+    struct.pack_into("<3f", rec, 25, *gnss)
+    rec[-2:] = b"$#"
+    return bytes(rec)
+
+
+def test_zero_lever_arms_flagged():
+    from posproc.display import Health, record_status
+    from posproc.logger import LiveStatus, _StreamWatcher
+    from posproc.pcs import LeverArms, lever_arms_from_msg20
+
+    good = (-6.19597, -0.814121, -3.09098)
+    assert not LeverArms((0, 0, 0), good, True).gnss_is_zero
+    assert LeverArms((0, 0, 0), (0.0, 0.0, 0.0), True).gnss_is_zero
+    assert not LeverArms().gnss_is_zero                          # not found is a different warning
+    assert abs(lever_arms_from_msg20(_msg20(good), 0).ref_to_gnss1[0] - good[0]) < 1e-5
+
+    w = _StreamWatcher()
+    w.feed(b"junk" + _msg20((0.0, 0.0, 0.0)))
+    assert w.status.lever_gnss == (0.0, 0.0, 0.0)
+    log = LiveStatus(connected=True, lever_gnss=(0.0, 0.0, 0.0))
+    assert record_status(_live(), 0.5, 60, True, log)[:2] == (Health.WARN, "POS lever arms not set")
+    log.lever_gnss = good
+    assert record_status(_live(), 0.5, 60, True, log)[0] == Health.GOOD
