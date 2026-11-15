@@ -15,7 +15,7 @@ from .config import Settings
 from .csvlog import CsvMatch, CsvMatcher
 from .fuse import FusionResult, fuse
 from .geo import gps_to_datetime, gps_to_decimal_year
-from .pcs import PcsData, group_sessions, read_pcs
+from .pcs import ZERO_LEVER_WARNING, PcsData, group_sessions, read_pcs
 
 FRAME_NOTE = ("ITRF2020 at the epoch of the data (NOAA CORS coordinates moved to the survey date "
               "with their published velocities). WGS84 (G2296) agrees with ITRF2020 at the "
@@ -106,11 +106,14 @@ class Pipeline:
         pcs, s = sr.pcs, self.s
         if len(pcs.g1) < 2:
             raise ValueError("No Group 1 navigation data in these files.")
+        if not pcs.lever.found:
+            sr.warnings.append("Message 20 (lever arms) not found; reference point used as antenna.")
+        elif pcs.lever.gnss_is_zero:                 # before the week check, so both problems show
+            sr.warnings.append(ZERO_LEVER_WARNING)
+            self.log("WARNING: " + ZERO_LEVER_WARNING)
         week = pcs.gps_week
         if not week:
             raise ValueError("No GPS week found (Group 3).")
-        if not pcs.lever.found:
-            sr.warnings.append("Message 20 (lever arms) not found; reference point used as antenna.")
         t0, t1 = float(pcs.g1["t"][0]), float(pcs.g1["t"][-1])
         sr.start, sr.end = gps_to_datetime(week, t0), gps_to_datetime(week, t1)
         sr.rms_before = _rms_g2(pcs.g2, pcs.g1)

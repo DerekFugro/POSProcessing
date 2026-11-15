@@ -20,6 +20,8 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .pcs import ZERO_LEVER_WARNING, lever_arms_from_msg20
+
 DEFAULT_HOST = "192.168.0.40"        # your trucks' PCS (Applanix factory default is 192.168.53.100)
 DEFAULT_PORT = 5603                  # Ethernet Logging Data Port (POS ICD)
 DEFAULT_SESSION_NAME = "SurveyorPOS"  # each Start makes <out>\<name>_YYYYMMDD_HHMMSS
@@ -47,6 +49,7 @@ class LiveStatus:
     files: list[str] = field(default_factory=list)
     current_file: str = ""
     session_folder: str = ""
+    lever_gnss: tuple[float, float, float] | None = None   # ref->GNSS from Message 20, once seen
     group_rates: dict[int, float] = field(default_factory=dict)
     lat: float = float("nan")
     lon: float = float("nan")
@@ -108,6 +111,8 @@ class _StreamWatcher:
             if tag == b"$GRP":
                 self.counts[rid] += 1
                 self._group(rid, b, j, bc)
+            elif rid == 20:
+                self.status.lever_gnss = lever_arms_from_msg20(b, j).ref_to_gnss1
             i = end
 
     def _group(self, gid, b, j, bc):
@@ -253,6 +258,8 @@ class PcsLogger:
         w = []
         if s.since_data_s > NO_DATA_WARN_S:
             w.append(f"No data for {s.since_data_s:.0f} s - is the PCS navigating and logging port groups set?")
+        if s.lever_gnss is not None and all(v == 0.0 for v in s.lever_gnss):
+            w.append(ZERO_LEVER_WARNING)
         if elapsed > 10:
             missing = [f"{g} ({name})" for g, name in REQUIRED_GROUPS.items() if self.watch.counts[g] == 0]
             if missing:

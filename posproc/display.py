@@ -79,6 +79,8 @@ def record_status(s: LiveStatus, age_s: float, waited_s: float, recording: bool 
         if not s.source_ip and waited_s < LOOKING_FOR_POS_S:
             return Health.NONE, "Looking for the POS...", "Waiting for data from the POS."
         return Health.BAD, "No data from the POS", "Check the POS is switched on and the network cable is plugged in."
+    if recording and log is not None and log.lever_gnss is not None and all(v == 0.0 for v in log.lever_gnss):
+        return Health.WARN, "POS lever arms not set", "The POS reports zero lever arms - check POSView."
     if recording and log is not None and log.warnings:
         if log.since_data_s > NO_DATA_WARN_S:
             return Health.WARN, "Recording, but no data", f"Nothing received for {log.since_data_s:.0f} s."

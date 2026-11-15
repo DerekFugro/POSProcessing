@@ -55,8 +55,6 @@ copyrighted - they live in `D:\Manuals`).
 - Long work never on the GUI thread: `QThread` worker (processing) or a Python thread with a
   Qt signal bridge (logger, display listener). Keep it that way.
 - `posproc` must not import Qt.
-- The logger and display listener only **listen**. Never send anything to the PCS
-  (control port 5601) without Derek explicitly asking.
 
 ## Verified facts - do not "fix" these
 
