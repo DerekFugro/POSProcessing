@@ -104,10 +104,13 @@ def test_logger_writes_into_session_folder(tmp_path):
     assert lg.watch.status.session_folder == str(folders[0])
 
 
-def _live(align=0, gnss="OmniSTAR G2", nsv=29, rms=(0.35, 0.35, 0.45), ip="192.168.0.40"):
+def _live(align=0, gnss="OmniSTAR G2", nsv=29, rms=(0.35, 0.35, 0.45), ip="192.168.0.40", nav_age_s=0.5):
+    import time
+
     from posproc.logger import LiveStatus
 
-    return LiveStatus(align=align, gnss_status=gnss, nsv=nsv, rms_neu=rms, source_ip=ip)
+    return LiveStatus(align=align, gnss_status=gnss, nsv=nsv, rms_neu=rms, source_ip=ip,
+                      nav_time=time.time() - nav_age_s)
 
 
 def test_record_status_light():
@@ -191,3 +194,31 @@ def test_zero_lever_arms_flagged():
     assert record_status(_live(), 0.5, 60, True, log)[:2] == (Health.WARN, "POS lever arms not set")
     log.lever_gnss = good
     assert record_status(_live(), 0.5, 60, True, log)[0] == Health.GOOD
+
+
+def test_no_navigation_detected():
+    """POS sends display data (GNSS etc.) but no Group 1: seen on 2026-11-15 with the POS in standby."""
+    from posproc.display import NO_NAV_TEXT, Health, health_summary, record_status
+    from posproc.logger import LiveStatus
+
+    stale = _live(nav_age_s=30)                     # last Full navigation 30 s ago, still in memory
+    assert record_status(stale, 0.5, 60)[:2] == (Health.BAD, "No navigation from the POS")
+    rows = health_summary(stale, 0.5)
+    assert rows["align"] == (NO_NAV_TEXT, Health.BAD) and rows["pos_rms"][0] == "-"
+    never = LiveStatus(gnss_status="OmniSTAR G2", nsv=32, source_ip="192.168.0.40")
+    assert record_status(never, 0.5, 2)[0] == Health.NONE          # just started: still looking
+    assert record_status(never, 0.5, 30)[:2] == (Health.BAD, "No navigation from the POS")
+    assert health_summary(_live(), 0.5)["align"][1] == Health.GOOD  # fresh navigation unchanged
+
+
+def test_logger_warns_when_needed_group_stops():
+    from posproc.logger import LiveStatus, PcsLogger
+
+    lg = PcsLogger("x", ".", log=lambda m: None)
+    for g in (1, 2, 3, 10001):
+        lg.watch.counts[g] = 100                     # all seen earlier in the recording
+    s = LiveStatus(group_rates={1: 50.0, 2: 1.0, 3: 1.0, 10001: 4.0})
+    assert lg._warnings(60, s) == []
+    s.group_rates = {1: 0.0, 2: 0.0, 3: 1.0, 10001: 4.0}       # navigation stopped mid-recording
+    w = lg._warnings(60, s)
+    assert len(w) == 1 and "1 (navigation)" in w[0] and "2 (RMS)" in w[0]

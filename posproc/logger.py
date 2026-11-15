@@ -50,6 +50,7 @@ class LiveStatus:
     current_file: str = ""
     session_folder: str = ""
     lever_gnss: tuple[float, float, float] | None = None   # ref->GNSS from Message 20, once seen
+    nav_time: float = 0.0         # time.time() when Group 1 (navigation) last arrived; 0 = never
     group_rates: dict[int, float] = field(default_factory=dict)
     lat: float = float("nan")
     lon: float = float("nan")
@@ -117,6 +118,8 @@ class _StreamWatcher:
 
     def _group(self, gid, b, j, bc):
         s = self.status
+        if gid == 1:
+            s.nav_time = time.time()
         if gid == 1 and bc == 132:
             s.lat, s.lon, s.h = struct.unpack_from("<ddd", b, j + 34)
             s.heading = struct.unpack_from("<d", b, j + 34 + 24 + 12 + 16)[0]
@@ -261,7 +264,9 @@ class PcsLogger:
         if s.lever_gnss is not None and all(v == 0.0 for v in s.lever_gnss):
             w.append(ZERO_LEVER_WARNING)
         if elapsed > 10:
-            missing = [f"{g} ({name})" for g, name in REQUIRED_GROUPS.items() if self.watch.counts[g] == 0]
+            # never seen, or stopped arriving (no records in the last few seconds)
+            missing = [f"{g} ({name})" for g, name in REQUIRED_GROUPS.items()
+                       if self.watch.counts[g] == 0 or s.group_rates.get(g, 0) == 0]
             if missing:
                 w.append("Not receiving group " + ", ".join(missing) +
                          " - add it in POSView: Logging > Ethernet Logging group select.")

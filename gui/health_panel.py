@@ -6,7 +6,7 @@ import threading
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QFormLayout, QGroupBox, QHBoxLayout, QLabel, QPushButton, QWidget
 
-from posproc.display import DISPLAY_PORT, DisplayListener, Health, health_summary
+from posproc.display import DISPLAY_PORT, STALE_S, DisplayListener, Health, health_summary, nav_age
 from posproc.logger import LiveStatus
 
 from . import styles
@@ -124,7 +124,7 @@ class HealthPanel(QGroupBox):
         summary = health_summary(s, age)
         if s.error:
             summary["link"] = (s.error, Health.BAD)
-        if age < 3 and s.lat == s.lat:
+        if nav_age(s) < STALE_S and s.lat == s.lat:      # only a current position, not the last one
             self.position.emit(s.lat, s.lon, s.heading, COLOURS[summary["pos_rms"][1]])
         for key, (text, grade) in summary.items():
             self.values[key].setText(text)
