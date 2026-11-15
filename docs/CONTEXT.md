@@ -10,7 +10,7 @@ Orientation file for anyone (person or coding agent) working on this project.
 | `gui/` | PySide6 GUI. Follows the 5-method `__init__` pattern, dark theme in `styles.py` |
 | `tests/` | pytest. `test_sample_data.py` needs `POSPROC_SAMPLES` |
 | `tools/rtklib/` | Put `rnx2rtkp.exe` here (not committed) |
-| `tools/pcs_simulator.py` | Fake PCS for testing the Live POS tab |
+| `tools/pcs_simulator.py` | Fake PCS for testing the Record and Diagnostics tabs |
 | `cache/` | Downloaded CORS data, coordinate list, OSM map tiles (safe to delete) |
 | `installers/` | Trimble installers + RTKLIB zip (on the PC, not committed) |
 | `docs/` | This file; `docs/reference/` holds local copies of Applanix PDFs (not committed) |

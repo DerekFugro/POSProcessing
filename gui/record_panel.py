@@ -103,6 +103,7 @@ class RecordPanel(QWidget):
         self._log: LiveStatus | None = None
         self._listen_start = time.monotonic()
         self._record_start = 0.0
+        self._running = False         # follows logger_panel.running_changed
 
     def _create_layouts(self):
         self.status_text_layout = QVBoxLayout()
@@ -170,7 +171,7 @@ class RecordPanel(QWidget):
         self.folder_input.setText(self.logger_panel.out_folder)
         self.send_button.hide()
         self.progress_label.setText("Not recording.")
-        self._show_running(self.logger_panel.is_running)
+        self._show_running(self._running)
         self.refresh()
         self.timer.start(REFRESH_MS)
 
@@ -199,7 +200,7 @@ class RecordPanel(QWidget):
             self.refresh()
 
     def _on_record_button_clicked(self):
-        if self.logger_panel.is_running:
+        if self._running:
             answer = QMessageBox.question(self, WINDOW_TITLE, "Stop recording?")
             if answer == QMessageBox.StandardButton.Yes:
                 self.logger_panel.stop_logging()
@@ -218,6 +219,7 @@ class RecordPanel(QWidget):
         self.logger_panel.start_logging()
 
     def _on_logger_panel_running_changed(self, running: bool):
+        self._running = running
         if running:
             self._record_start = time.monotonic()
         self._show_running(running)
@@ -250,7 +252,7 @@ class RecordPanel(QWidget):
     def _refresh_light(self):
         s, age = self._health
         level, title, detail = record_status(s, age, time.monotonic() - self._listen_start,
-                                             self.logger_panel.is_running, self._log)
+                                             self._running, self._log)
         colour = LIGHT_COLOURS[level]
         self.status_light.setStyleSheet(f"background-color: {colour}; border-radius: {LIGHT_SIZE // 2}px;")
         self.status_title.setText(title)
@@ -260,7 +262,7 @@ class RecordPanel(QWidget):
     def _refresh_folder(self):
         folder = self._folder()
         problem = drive_problem(folder)
-        if self.logger_panel.is_running and self._log and self._log.session_folder:
+        if self._running and self._log and self._log.session_folder:
             self.folder_preview.setText(f"Recording into {self._log.session_folder}")
         elif problem:
             self.folder_preview.setText(problem)
@@ -274,7 +276,7 @@ class RecordPanel(QWidget):
         self.space_label.setStyleSheet(f"color: {styles.ACCENT_ORANGE if low else styles.TEXT_SECONDARY};")
 
     def _refresh_progress(self):
-        if self.logger_panel.is_running:
+        if self._running:
             log = self._log or LiveStatus()
             elapsed = duration_text(time.monotonic() - self._record_start)
             self.progress_label.setText(f"Recording  ·  {elapsed}  ·  {count_text(len(log.files), 'file')}  ·  "

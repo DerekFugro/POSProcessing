@@ -14,6 +14,19 @@ from .settings_panel import SettingsPanel
 
 WINDOW_TITLE = "POS PPK Processor"
 WINDOW_SIZE = (1400, 860)
+RECORD, PROCESS, DIAGNOSTICS, SETTINGS = "Record", "Process", "Diagnostics", "Settings"
+LOCKED_WHILE_RECORDING = "Locked while recording - stop recording on the Record tab first."
+LOCKED_WHILE_PROCESSING = "Locked while processing - wait for it to finish or press Cancel."
+
+
+def locked_tabs(recording: bool, processing: bool) -> dict[str, str]:
+    """Tabs to grey out while busy, with the reason. Diagnostics is never locked (it only shows)."""
+    locked = {}
+    if recording:
+        locked.update({PROCESS: LOCKED_WHILE_RECORDING, SETTINGS: LOCKED_WHILE_RECORDING})
+    if processing:
+        locked.update({RECORD: LOCKED_WHILE_PROCESSING, SETTINGS: LOCKED_WHILE_PROCESSING})
+    return locked
 
 
 class MainWindow(QMainWindow):
@@ -33,19 +46,22 @@ class MainWindow(QMainWindow):
         self.record_panel = RecordPanel(self.settings, self.logger_panel)
         self.process_panel = ProcessPanel(self.settings)
         self.settings_panel = SettingsPanel(self.settings)
+        self._recording = False
+        self._processing = False
 
     # --- Layout ---
     def _create_layouts(self):
-        self.main_tabs.addTab(self.record_panel, "Record")
-        self.main_tabs.addTab(self.process_panel, "Process")
-        self.main_tabs.addTab(self.logger_panel, "Diagnostics")
-        self.main_tabs.addTab(self.settings_panel, "Settings")
+        self.tab_widgets = {RECORD: self.record_panel, PROCESS: self.process_panel,
+                            DIAGNOSTICS: self.logger_panel, SETTINGS: self.settings_panel}
+        for name, widget in self.tab_widgets.items():
+            self.main_tabs.addTab(widget, name)
         self.setCentralWidget(self.main_tabs)
 
     # --- Signals & Slots ---
     def _connect_signals(self):
         self.logger_panel.files_ready.connect(self._on_logger_panel_files_ready)
         self.process_panel.running_changed.connect(self._on_process_panel_running_changed)
+        self.logger_panel.running_changed.connect(self._on_logger_panel_running_changed)
         self.settings_panel.saved.connect(self._on_settings_panel_saved)
 
     # --- Styling ---
@@ -57,14 +73,29 @@ class MainWindow(QMainWindow):
     # --- Initial State ---
     def _load_initial_state(self):
         self.main_tabs.setCurrentWidget(self.record_panel)
+        self._update_tab_locks()
 
     # --- Business logic ---
+    def _update_tab_locks(self):
+        # Follow the running_changed signals: when "stopped" arrives the worker thread may
+        # still be finishing, so is_running can briefly still say True.
+        locked = locked_tabs(self._recording, self._processing)
+        for name, widget in self.tab_widgets.items():
+            index = self.main_tabs.indexOf(widget)
+            self.main_tabs.setTabEnabled(index, name not in locked)
+            self.main_tabs.setTabToolTip(index, locked.get(name, ""))
+
+    def _on_logger_panel_running_changed(self, running: bool):
+        self._recording = running
+        self._update_tab_locks()
+
     def _on_settings_panel_saved(self):
         self.logger_panel.reload_settings()
         self.record_panel.refresh()
 
     def _on_process_panel_running_changed(self, running: bool):
-        self.settings_panel.setEnabled(not running)
+        self._processing = running
+        self._update_tab_locks()
 
     def _on_logger_panel_files_ready(self, files: list):
         self.process_panel.add_pcs_files(files)

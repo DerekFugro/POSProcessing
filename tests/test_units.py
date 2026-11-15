@@ -149,3 +149,12 @@ def test_record_panel_helpers(tmp_path):
     assert drive_problem(str(tmp_path)) == ""
     text, low = free_space_text(str(tmp_path / "not_made_yet"))
     assert "GB free" in text and "hours of recording" in text and low is False
+
+
+def test_tabs_locked_while_busy():
+    from gui.main_window import DIAGNOSTICS, PROCESS, RECORD, SETTINGS, locked_tabs
+
+    assert locked_tabs(False, False) == {}
+    assert set(locked_tabs(True, False)) == {PROCESS, SETTINGS}
+    assert set(locked_tabs(False, True)) == {RECORD, SETTINGS}
+    assert DIAGNOSTICS not in locked_tabs(True, True)

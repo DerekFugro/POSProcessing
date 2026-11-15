@@ -37,7 +37,7 @@ TCP 5603). Owner: Derek Pescod (hardware / field). Repo: github.com/DerekFugro/P
 | `posproc/display.py` | UDP 5600 display listener + health grading |
 | `posproc/cli.py` | `python -m posproc.cli --pcs ... --csv ... --out ...` |
 | `posproc/config.py` | `Settings` dataclass <-> `settings.json` (per PC, not in git) |
-| `gui/` | PySide6 GUI: `main_window.py`, `logger_panel.py` (Live POS tab), `health_panel.py`, `map_view.py`, `tiles.py` (OSM tile cache server), `settings_dialog.py`, `worker.py`, `styles.py` |
+| `gui/` | PySide6 GUI, four tabs: `main_window.py` (tabs + locking while busy), `record_panel.py` (Record: status light, folder, Start/Stop, live map), `process_panel.py` (Process: files, Run, Map/Report/Log), `logger_panel.py` (Diagnostics, read-only; also owns the recording engine), `settings_panel.py` (Settings: Recording + Processing), `health_panel.py`, `map_view.py`, `tiles.py` (OSM tile cache server), `worker.py`, `styles.py` |
 | `gui/web/leaflet/` | Bundled Leaflet 1.9.4 (from npm, checksum checked) |
 | `tools/pcs_simulator.py` | Fake PCS: replays `.000` files on TCP 5603 and UDP 5600 |
 | `tests/` | pytest; sample-data tests need `POSPROC_SAMPLES` |
@@ -97,7 +97,7 @@ RINEX and `.pos` results are reused on re-runs when inputs are unchanged.
 
 ## To do (priority order)
 
-1. Truck test of Live POS (5600 health, 5603 logging, auto PCS IP, firewall).
+1. Truck test of Record/Diagnostics (5600 health, 5603 logging, auto PCS IP, firewall).
 2. Check accuracy against the Richmond GCPs (`RichmondTennisClick.gcp`; need zone/units).
 3. Report "After" RMS from a two-base comparison instead of RTKLIB sigmas.
 4. Antenna phase-centre models (ANTEX) for base and rover.

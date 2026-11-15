@@ -21,6 +21,7 @@ QPushButton:disabled {{ color: #7f8c8d; }}
 QTabWidget::pane {{ border: 1px solid {BORDER_COLOR}; }}
 QTabBar::tab {{ background: {DARK_BG_ALT}; padding: 6px 14px; border: 1px solid {BORDER_COLOR}; }}
 QTabBar::tab:selected {{ background: {ACCENT_BLUE}; }}
+QTabBar::tab:disabled {{ background: {DARK_BG}; color: #7f8c8d; }}
 QProgressBar {{ border: 1px solid {BORDER_COLOR}; border-radius: 3px; text-align: center; background: {DARK_BG_ALT}; }}
 QProgressBar::chunk {{ background-color: {ACCENT_GREEN}; }}
 """
