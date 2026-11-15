@@ -1,4 +1,5 @@
-"""Main window: pick PCS files and CSV logs, run, then view map, report and log."""
+"""Main window: four tabs - Record (live POS logging), Process (PPK of PCS files and CSV logs,
+with map, report and log), Diagnostics and Settings. Opens on Record."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,6 +30,8 @@ SPACING = 6
 PROGRESS_STEPS = 1000
 PCS_FILTER = "POS log files (*.0[0-9][0-9]);;All files (*)"
 RATE_CHOICES = [("10 Hz", 10.0), ("1 Hz", 1.0), ("All epochs (~50 Hz)", 0.0)]
+DIAGNOSTICS_PLACEHOLDER = "Live POS detail will move here. For now it is on the Record tab."
+SETTINGS_PLACEHOLDER = "Settings will move onto this tab. For now use the button below."
 
 
 class MainWindow(QMainWindow):
@@ -42,7 +45,12 @@ class MainWindow(QMainWindow):
 
     # --- Widget Construction ---
     def _create_widgets(self):
-        self.central_widget = QWidget()
+        self.main_tabs = QTabWidget()
+        self.process_tab = QWidget()
+        self.diagnostics_tab = QWidget()
+        self.diagnostics_label = QLabel(DIAGNOSTICS_PLACEHOLDER)
+        self.settings_tab = QWidget()
+        self.settings_label = QLabel(SETTINGS_PLACEHOLDER)
         self.left_panel = QWidget()
         self.splitter = QSplitter()
 
@@ -80,7 +88,7 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.status_label = QLabel("Ready")
 
-        self.tabs = QTabWidget()
+        self.results_tabs = QTabWidget()
         self.settings = Settings.load()
         self.map_view = MapView(Path(self.settings.tile_cache_dir))
         self.report_view = QWebEngineView() if HAS_WEBENGINE else QLabel("Report opens in your browser.")
@@ -123,10 +131,6 @@ class MainWindow(QMainWindow):
         self.run_row_layout = QHBoxLayout()
         self.run_row_layout.addWidget(self.run_button, 2)
         self.run_row_layout.addWidget(self.cancel_button, 1)
-        self.tools_row_layout = QHBoxLayout()
-        self.tools_row_layout.addWidget(self.settings_button)
-        self.tools_row_layout.addWidget(self.open_folder_button)
-
         self.left_layout = QVBoxLayout(self.left_panel)
         self.left_layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         self.left_layout.setSpacing(SPACING)
@@ -136,20 +140,34 @@ class MainWindow(QMainWindow):
         self.left_layout.addLayout(self.run_row_layout)
         self.left_layout.addWidget(self.progress_bar)
         self.left_layout.addWidget(self.status_label)
-        self.left_layout.addLayout(self.tools_row_layout)
+        self.left_layout.addWidget(self.open_folder_button)
 
-        self.tabs.addTab(self.map_view, "Map")
-        self.tabs.addTab(self.report_view, "Report")
-        self.tabs.addTab(self.log_view, "Log")
-        self.tabs.addTab(self.logger_panel, "Live POS")
+        self.results_tabs.addTab(self.map_view, "Map")
+        self.results_tabs.addTab(self.report_view, "Report")
+        self.results_tabs.addTab(self.log_view, "Log")
         self.splitter.addWidget(self.left_panel)
-        self.splitter.addWidget(self.tabs)
+        self.splitter.addWidget(self.results_tabs)
         self.splitter.setStretchFactor(1, 1)
+        self.process_layout = QVBoxLayout(self.process_tab)
+        self.process_layout.setContentsMargins(0, 0, 0, 0)
+        self.process_layout.addWidget(self.splitter)
 
-        self.main_layout = QVBoxLayout(self.central_widget)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.addWidget(self.splitter)
-        self.setCentralWidget(self.central_widget)
+        self.diagnostics_layout = QVBoxLayout(self.diagnostics_tab)
+        self.diagnostics_layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
+        self.diagnostics_layout.addWidget(self.diagnostics_label)
+        self.diagnostics_layout.addStretch()
+
+        self.settings_layout = QVBoxLayout(self.settings_tab)
+        self.settings_layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
+        self.settings_layout.addWidget(self.settings_label)
+        self.settings_layout.addWidget(self.settings_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.settings_layout.addStretch()
+
+        self.main_tabs.addTab(self.logger_panel, "Record")
+        self.main_tabs.addTab(self.process_tab, "Process")
+        self.main_tabs.addTab(self.diagnostics_tab, "Diagnostics")
+        self.main_tabs.addTab(self.settings_tab, "Settings")
+        self.setCentralWidget(self.main_tabs)
 
     # --- Signals & Slots ---
     def _connect_signals(self):
@@ -179,6 +197,8 @@ class MainWindow(QMainWindow):
         self.log_view.setStyleSheet("font-family: Consolas, monospace; font-size: 9pt;")
         self.status_label.setStyleSheet(f"color: {styles.TEXT_SECONDARY};")
         self.pcs_summary_label.setStyleSheet(f"color: {styles.TEXT_SECONDARY};")
+        self.diagnostics_label.setStyleSheet(f"color: {styles.TEXT_SECONDARY};")
+        self.settings_label.setStyleSheet(f"color: {styles.TEXT_SECONDARY};")
 
     # --- Initial State ---
     def _load_initial_state(self):
@@ -187,6 +207,7 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(False)
         self.open_folder_button.setEnabled(False)
         self._update_pcs_summary()
+        self.main_tabs.setCurrentWidget(self.logger_panel)
 
     # --- Business logic ---
     def _list_items(self, lw: QListWidget) -> list[str]:
@@ -291,7 +312,7 @@ class MainWindow(QMainWindow):
         self._worker.finished.connect(self._thread.quit)
         self._worker.failed.connect(self._thread.quit)
         self._thread.start()
-        self.tabs.setCurrentWidget(self.log_view)
+        self.results_tabs.setCurrentWidget(self.log_view)
 
     def _on_cancel_button_clicked(self):
         if self._worker:
@@ -328,7 +349,7 @@ class MainWindow(QMainWindow):
                 self.report_view.load(QUrl.fromLocalFile(str(result.report_html)))
             else:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(result.report_html)))
-        self.tabs.setCurrentWidget(self.report_view if ok else self.log_view)
+        self.results_tabs.setCurrentWidget(self.report_view if ok else self.log_view)
 
     def _on_worker_failed(self, message: str):
         self._set_running(False)
@@ -339,6 +360,7 @@ class MainWindow(QMainWindow):
         self._add_unique(self.pcs_list, files)
         self._update_pcs_summary()
         self.status_label.setText(f"Added {len(files)} logged file(s). Press Run to process.")
+        self.main_tabs.setCurrentWidget(self.process_tab)
 
     def closeEvent(self, event):
         if not self.logger_panel.is_running:
