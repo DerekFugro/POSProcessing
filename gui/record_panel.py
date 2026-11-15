@@ -151,7 +151,7 @@ class RecordPanel(QWidget):
         self.logger_panel.health_panel.position.connect(self.live_map.add_point)
         self.logger_panel.logging_status.connect(self._on_logger_panel_logging_status)
         self.logger_panel.running_changed.connect(self._on_logger_panel_running_changed)
-        self.logger_panel.out_input.textChanged.connect(self._on_logger_panel_out_changed)
+        self.logger_panel.out_folder_changed.connect(self._on_logger_panel_out_folder_changed)
 
     def _apply_styles(self):
         self.left_widget.setFixedWidth(LEFT_WIDTH)
@@ -193,7 +193,7 @@ class RecordPanel(QWidget):
     def _on_folder_input_editing_finished(self):
         self._set_folder(self._folder())
 
-    def _on_logger_panel_out_changed(self, text: str):
+    def _on_logger_panel_out_folder_changed(self, text: str):
         if text.strip() != self._folder():
             self.folder_input.setText(text.strip())
             self._refresh()
