@@ -18,6 +18,9 @@ TCP 5603). Owner: Derek Pescod (hardware / field). Repo: github.com/DerekFugro/P
 - Short, plain answers (grade 9). Lead with the answer. Say what is verified, inferred or guessed.
 - Never claim something is done or tested unless it was actually run.
 - Never invent ICD layouts, file formats or data. Check against real files before trusting a field.
+- Git: commit straight to `main` and push when Derek asks - no branches or pull requests (one
+  PC works on this app; decided 2026-11-15). Git identity is set in this repo's config. The
+  GitHub repo is public: never commit installers, Applanix manuals or other third-party files.
 
 ## Layout
 
