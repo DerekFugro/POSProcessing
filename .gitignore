@@ -1,5 +1,6 @@
 # Python / local environment
 .venv/
+.uv/
 __pycache__/
 *.pyc
 .pytest_cache/

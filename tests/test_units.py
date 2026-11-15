@@ -54,3 +54,51 @@ def test_smoother_averages_noise():
     z = np.column_stack([np.full(200, 0.5), np.zeros(200), np.zeros(200)]) + rng.normal(0, 0.05, (200, 3))
     xs, ps = _smooth(t, z, np.full((200, 3), 0.05 ** 2), 1e-6)
     assert abs(xs[:, 0].mean() - 0.5) < 0.01 and np.all(ps < 0.05 ** 2)
+
+
+def test_session_folder_name_and_no_overwrite(tmp_path):
+    import datetime as dt
+
+    from posproc.logger import session_folder
+
+    when = dt.datetime(2026, 11, 14, 13, 45, 7)
+    first = session_folder(tmp_path, "SurveyorPOS", when)
+    assert first == tmp_path / "SurveyorPOS_20261114_134507"
+    first.mkdir()
+    assert session_folder(tmp_path, "SurveyorPOS", when).name == "SurveyorPOS_20261114_134507_2"
+
+
+def test_logger_writes_into_session_folder(tmp_path):
+    import socket
+    import threading
+    import time
+
+    from posproc.logger import PcsLogger
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+
+    def serve():
+        conn, _ = srv.accept()
+        conn.sendall(b"x" * 1000)
+        time.sleep(1)
+        conn.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+    lg = PcsLogger("127.0.0.1", tmp_path, port=port, session_name="SurveyorPOS", log=lambda m: None)
+    t = threading.Thread(target=lg.run, daemon=True)
+    t.start()
+    deadline = time.time() + 10
+    while lg.watch.status.bytes_total < 1000 and time.time() < deadline:
+        time.sleep(0.05)
+    lg.stop()
+    t.join(10)
+    srv.close()
+
+    folders = list(tmp_path.iterdir())
+    assert len(folders) == 1 and folders[0].name.startswith("SurveyorPOS_")
+    files = list(folders[0].glob("LV_1_*.000"))
+    assert len(files) == 1 and files[0].stat().st_size == 1000
+    assert lg.watch.status.session_folder == str(folders[0])
