@@ -19,7 +19,11 @@ class PpkError(RuntimeError):
     pass
 
 
-def write_config(path: Path, base_xyz, elmask: float, navsys: int, armode: str) -> Path:
+def write_config(path: Path, base_xyz, elmask: float, navsys: int, armode: str,
+                 rover_ant: str = "", base_ant: str = "", antex: Path | None = None) -> Path:
+    """rtklib.conf. With antex + antenna names, RTKLIB applies the antenna calibrations: the
+    rover solution is at its ARP (bottom of the antenna) and the base phase centre is placed
+    at its ARP (NOAA coordinates) + offset."""
     lines = {
         "pos1-posmode": "kinematic",
         "pos1-frequency": "l1+l2",
@@ -45,6 +49,10 @@ def write_config(path: Path, base_xyz, elmask: float, navsys: int, armode: str) 
         "ant2-pos3": f"{base_xyz[2]:.4f}",
         "ant2-antdele": "0", "ant2-antdeln": "0", "ant2-antdelu": "0",
     }
+    if antex is not None:
+        lines["ant1-anttype"] = rover_ant
+        lines["ant2-anttype"] = base_ant
+        lines["file-rcvantfile"] = str(antex)   # RTKLIB-EX 2.5.1 name (file-rcvantp is silently ignored)
     path.write_text("\n".join(f"{k:<18}={v}" for k, v in lines.items()) + "\n", encoding="ascii")
     return path
 

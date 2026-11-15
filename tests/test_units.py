@@ -368,3 +368,48 @@ def test_control_mark_folder_checked():
     for bad in ('{"cmd":"mark","label":"P1","folder":""}', '{"cmd":"mark","label":"P1","folder":5}'):
         with pytest.raises(CommandError):
             parse_command(bad)
+
+
+ANTEX_SNIPPET = """     1.4            M                                       ANTEX VERSION / SYST
+                                                            END OF HEADER
+                                                            START OF ANTENNA
+TRM57970.00     NONE                                        TYPE / SERIAL NO
+     2                                                      # OF FREQUENCIES
+   G01                                                      START OF FREQUENCY
+      0.58     -0.59     63.16                              NORTH / EAST / UP
+   G01                                                      END OF FREQUENCY
+   G02                                                      START OF FREQUENCY
+      0.04      2.02     56.57                              NORTH / EAST / UP
+   G02                                                      END OF FREQUENCY
+                                                            END OF ANTENNA
+"""
+
+
+def test_antenna_names_and_offsets(tmp_path):
+    from posproc import antenna
+
+    atx = tmp_path / "t.atx"
+    atx.write_text(ANTEX_SNIPPET)
+    assert antenna.antenna_name("TRM57970.00") == "TRM57970.00     NONE"
+    offs = antenna.antex_offsets(atx, "TRM57970.00     NONE")
+    assert offs["G01"] == (0.58, -0.59, 63.16) and offs["G02"][2] == 56.57
+    assert antenna.antex_offsets(atx, "LEIAR10         NONE") is None
+    obs = tmp_path / "b.26o"
+    obs.write_text("     2.11           OBSERVATION DATA    M (MIXED)           RINEX VERSION / TYPE\n"
+                   "19192044            LEIAR10         NONE                    ANT # / TYPE\n"
+                   "                                                            END OF HEADER\n")
+    assert antenna.rinex_antenna(obs) == "LEIAR10         NONE"
+    obs.write_text("##########          UNKNOWN_EXT     NONE                    ANT # / TYPE\n")
+    assert antenna.rinex_antenna(obs) == "UNKNOWN_EXT     NONE"
+
+
+def test_rtklib_config_uses_antenna_calibrations(tmp_path):
+    from posproc import ppk
+
+    conf = ppk.write_config(tmp_path / "a.conf", (1, 2, 3), 15, 5, "fix-and-hold",
+                            "TRM57970.00     NONE", "LEIAR10         NONE", tmp_path / "ngs20.atx")
+    text = conf.read_text()
+    assert "ant1-anttype      =TRM57970.00     NONE" in text and "ant2-anttype      =LEIAR10         NONE" in text
+    assert "file-rcvantfile   =" in text and "file-rcvantp" not in text   # RTKLIB-EX ignores file-rcvantp
+    plain = ppk.write_config(tmp_path / "b.conf", (1, 2, 3), 15, 5, "fix-and-hold").read_text()
+    assert "anttype" not in plain and "rcvant" not in plain

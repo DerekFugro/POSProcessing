@@ -51,6 +51,11 @@ class Settings:
     elevation_mask_deg: float = 15.0
     navsys: int = 1 + 4                      # GPS + GLONASS (RTKLIB bit mask)
     ar_mode: str = "fix-and-hold"
+    # Antenna calibrations (ANTEX). POSView lever arm goes to the antenna bottom (ARP), so RTKLIB
+    # must solve for the ARP: rover = Zephyr 2 (all Applanix POS LV antennas), base = from its RINEX.
+    use_antenna_models: bool = True
+    rover_antenna: str = "TRM57970.00     NONE"
+    antex_url: str = "https://www.ngs.noaa.gov/ANTCAL/LoadFile?file=ngs20.atx"
     # Fusion
     process_noise_m_per_sqrt_s: float = 0.02
     ppk_min_sigma_m: float = 0.01

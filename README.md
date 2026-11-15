@@ -172,7 +172,10 @@ Test data: ARAN69, 2025-05-19, Richmond VA, 175 minutes.
   (95% within 10 cm); heights differ by ~10 cm. **Realistic accuracy: ~3-5 cm horizontal,
   ~5-10 cm vertical.** Not yet checked against a surveyed point.
 - The report's "After" numbers are RTKLIB's own sigmas (~7 mm) and are too optimistic.
-- Antenna phase-centre models are not applied yet (likely cause of the ~10 cm height gap).
+- Antenna calibrations (NGS `ngs20.atx`, downloaded once into the cache) are applied for the
+  truck (Trimble Zephyr 2, `TRM57970.00`; the POSView lever arm goes to the antenna bottom) and
+  the base (type from its RINEX). On 2026-11-14 data this raised heights by 2.4 cm (LS02) and
+  2.9 cm (CORB); the LS02/CORB height difference went from 3.6 to 3.1 cm.
 - Attitude is not re-processed (raw IMU format is export-controlled).
 - Output frame is ITRF2020 at the epoch of the data, reported as WGS84 (G2296) - same at
   the centimetre level.

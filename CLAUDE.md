@@ -31,6 +31,7 @@ TCP 5603). Owner: Derek Pescod (hardware / field). Repo: github.com/DerekFugro/P
 | `posproc/rt27.py` | Pull Group 10001 (Trimble RT27) out to a `.rt27` file, packet stats |
 | `posproc/convert.py` | Runs Trimble `convertToRinex.exe` (RT27 -> RINEX 3.04) |
 | `posproc/cors.py` | NOAA CORS station list, nearest-station pick, download (S3 bucket) |
+| `posproc/antenna.py` | NGS ANTEX download/cache, antenna names from RINEX, offsets |
 | `posproc/ppk.py` | Writes RTKLIB config, runs `rnx2rtkp`, reads `.pos` |
 | `posproc/fuse.py` | Kalman + RTS smoother of (PPK antenna - real-time antenna) offset |
 | `posproc/csvlog.py` | Ties ARAN CSV rows to POS time, writes `<name>_PPK.csv` |
@@ -76,6 +77,11 @@ copyrighted - they live in `D:\Manuals`).
 - ARAN CSV: Elevation = POS Group 1 altitude in **feet**; Heading = POS heading exactly;
   CSV Roll/Pitch are a different frame - do not use them for matching. No time column.
 - Raw IMU (Group 4) format is export-controlled; attitude is not re-processed.
+- Antennas (Derek, 2026-11-15): all Applanix POS LV antennas are Trimble Zephyr 2 ->
+  `TRM57970.00 NONE` (ngs20.atx: TRM55970.00 is a copy, TRM77970.00 within 6 mm). The POSView
+  ref->GNSS lever arm is measured to the antenna **bottom (ARP)**, so RTKLIB solves for the ARP
+  with ANTEX (`posproc/antenna.py`). RTKLIB-EX 2.5.1 option is `file-rcvantfile` -
+  `file-rcvantp` is silently ignored. Convert to RINEX writes the rover antenna as `UNKNOWN_EXT`.
 - Group 3 GNSS status 12/13 on this firmware is undefined in the V6 ICD (name unknown).
 
 ## Accuracy (ARAN69, 2025-05-19, base LS02 39 km, 30 s base data)
@@ -104,7 +110,7 @@ RINEX and `.pos` results are reused on re-runs when inputs are unchanged.
 1. Truck test of Record/Diagnostics (5600 health, 5603 logging, auto PCS IP, firewall).
 2. Check accuracy against the Richmond GCPs (`RichmondTennisClick.gcp`; need zone/units).
 3. Report "After" RMS from a two-base comparison instead of RTKLIB sigmas.
-4. Antenna phase-centre models (ANTEX) for base and rover.
+4. Antenna calibrations: done 2026-11-15 (Zephyr 2 + base from RINEX, NGS ngs20.atx).
 5. Test POS units of other years / firmware.
 6. Name GNSS mode 12; GPS week rollover inside a session; download base stations lazily.
 7. Installer: built 2026-11-15 (`packaging\build.ps1`); not yet installed on a second PC.

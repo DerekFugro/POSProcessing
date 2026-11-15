@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import convert, cors, ppk, rt27
+from . import antenna, convert, cors, ppk, rt27
 from .config import Settings
 from .csvlog import CsvMatch, CsvMatcher
 from .fuse import FusionResult, fuse
@@ -145,11 +145,14 @@ class Pipeline:
         self._check()
 
         step(4, f"{sr.name}: PPK processing")
+        antex = self._antex(sr)
         pos = None
         for base in bases:
             self.log(f"Trying base {base.station.site} ({base.station.dist_km:.1f} km, "
                      f"{base.interval_s:g} s data)")
-            conf = ppk.write_config(work / "rtklib.conf", base.xyz, s.elevation_mask_deg, s.navsys, s.ar_mode)
+            base_ant = self._antennas(sr, antex, base)
+            conf = ppk.write_config(work / "rtklib.conf", base.xyz, s.elevation_mask_deg, s.navsys, s.ar_mode,
+                                    s.rover_antenna, base_ant, antex if base_ant else None)
             out_pos = work / f"{sr.name}_{base.station.site}.pos"
             try:
                 ppk.run_rnx2rtkp(s.rnx2rtkp_exe, conf, rover_obs, base.obs_files,
@@ -194,6 +197,34 @@ class Pipeline:
         step(6, f"{sr.name}: writing trajectory")
         sr.trajectory_csv = _write_trajectory(work / f"{sr.name}_PPK_trajectory_WGS84.csv", pcs, f, week, rate_hz)
         self.log(f"Trajectory: {sr.trajectory_csv}")
+
+    def _antex(self, sr) -> Path | None:
+        """Antenna calibration file, or None (with a warning) if switched off or unavailable."""
+        if not self.s.use_antenna_models:
+            sr.warnings.append("Antenna calibrations are switched off: heights can be several cm off.")
+            return None
+        try:
+            return antenna.ensure_antex(self.s.cache_dir, self.s.antex_url, self.log)
+        except antenna.AntennaError as exc:
+            sr.warnings.append(f"No antenna calibrations ({exc}); heights can be several cm off.")
+            return None
+
+    def _antennas(self, sr, antex: Path | None, base) -> str:
+        """Base antenna name for RTKLIB ('' = do not use calibrations for this run). Logs both."""
+        if antex is None:
+            return ""
+        rover = self.s.rover_antenna
+        base_ant = antenna.rinex_antenna(base.obs_files[0])
+        missing = [f"{who} {name.strip() or 'unknown'}" for who, name in (("rover", rover), ("base", base_ant))
+                   if not name.strip() or antenna.antex_offsets(antex, name) is None]
+        if missing:
+            sr.warnings.append("No antenna calibration for " + " and ".join(missing)
+                               + "; ran without calibrations - heights can be several cm off.")
+            return ""
+        for who, name in (("Rover", rover), ("Base", base_ant)):
+            up = antenna.antex_offsets(antex, name).get("G01", (0, 0, float("nan")))[2]
+            self.log(f"{who} antenna {' '.join(name.split())}: L1 phase centre {up:.1f} mm above the ARP")
+        return base_ant
 
     def _bases(self, lat, lon, days, year_frac) -> list[cors.BaseData]:
         s = self.s
