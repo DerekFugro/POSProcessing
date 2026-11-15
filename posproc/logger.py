@@ -228,6 +228,7 @@ class PcsLogger:
                             bytes_at_tick, last_tick = s.bytes_total, now
                             s.group_rates = self.watch.rates(now)
                             s.warnings = self._warnings(now - start_wall, s)
+                            self.marks.tick()
                             self._emit()
                 except (OSError, ConnectionError) as exc:
                     s.connected, s.error = False, f"Connection lost: {exc}. Reconnecting..."

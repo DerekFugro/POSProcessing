@@ -16,7 +16,7 @@ from posproc.config import Settings
 from posproc.control import HEARTBEAT_S, PROTOCOL_VERSION
 from posproc.display import Health
 from posproc.logger import LiveStatus, nav_row
-from posproc.marks import DEFAULT_MARK_SECONDS
+from posproc.marks import DEFAULT_MARK_SECONDS, MarkError
 
 from . import styles
 from .logger_panel import LoggerPanel
@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
         self.process_panel.running_changed.connect(self._on_process_panel_running_changed)
         self.logger_panel.running_changed.connect(self._on_logger_panel_running_changed)
         self.settings_panel.saved.connect(self._on_settings_panel_saved)
+        self.record_panel.light_changed.connect(self._on_record_panel_light_changed)
         if self.link:
             self.link.command.connect(self._on_link_command)
             self.link.closed.connect(self._on_link_closed)
@@ -186,8 +187,9 @@ class MainWindow(QMainWindow):
             return
         snapshot = {**fields["nav"], "light": fields["light"], "message": fields["message"]}
         try:
-            info = self.logger_panel.start_mark(req["label"], req.get("seconds") or DEFAULT_MARK_SECONDS, snapshot)
-        except (RuntimeError, OSError) as exc:
+            info = self.logger_panel.start_mark(req["label"], req.get("seconds") or DEFAULT_MARK_SECONDS, snapshot,
+                                                req.get("folder"))
+        except (RuntimeError, MarkError, OSError) as exc:
             self.link.send("reply", req, cmd="mark", ok=False, error=str(exc), **fields)
             return
         self.link.send("reply", req, cmd="mark", ok=True, **info, **fields)
@@ -210,6 +212,9 @@ class MainWindow(QMainWindow):
 
     def _on_logger_panel_mark_done(self, info: dict):
         self.link.send("mark_done", None, **info)
+
+    def _on_record_panel_light_changed(self, level: str, title: str, _detail: str):
+        self.logger_panel.set_mark_light(LIGHT_NAMES[level], title)
 
     def _on_settings_panel_saved(self):
         self.logger_panel.reload_settings()

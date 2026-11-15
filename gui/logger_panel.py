@@ -241,12 +241,18 @@ class LoggerPanel(QWidget):
         """Marks cut short when the last run stopped."""
         return list(getattr(self._logger, "closed_marks", []) or [])
 
-    def start_mark(self, label: str, seconds: float, snapshot: dict) -> dict:
-        """Start a mark CSV in the session folder. Raises RuntimeError if not recording yet."""
+    def start_mark(self, label: str, seconds: float, snapshot: dict, folder: str | None = None) -> dict:
+        """Start a mark CSV (in `folder` if given, else <session>\\marks). Raises RuntimeError if
+        not recording yet, MarkError if the folder can't be used."""
         s = self.live
         if not self.is_running or not s or not s.session_folder:
             raise RuntimeError("not recording yet (no data written)")
-        return self._logger.marks.start(Path(s.session_folder), label, seconds, snapshot)
+        return self._logger.marks.start(Path(s.session_folder), label, seconds, snapshot, folder)
+
+    def set_mark_light(self, light: str, message: str):
+        """Current status light, stored on each mark CSV row and used for the mark summary."""
+        if self._logger:
+            self._logger.marks.set_light(light, message)
 
     def _run_logger(self):
         try:

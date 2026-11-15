@@ -9,7 +9,7 @@ import shutil
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
                                QSplitter, QVBoxLayout, QWidget)
 
@@ -67,6 +67,8 @@ def duration_text(seconds: float) -> str:
 
 
 class RecordPanel(QWidget):
+    light_changed = Signal(str, str, str)      # Health grade, title, detail (about once a second)
+
     def __init__(self, settings, logger_panel: LoggerPanel, parent=None):
         super().__init__(parent)
         self.settings = settings
@@ -285,6 +287,7 @@ class RecordPanel(QWidget):
         level, title, detail = record_status(s, age, time.monotonic() - self._listen_start,
                                              self._running, self._log)
         self._light = (level, title, detail)
+        self.light_changed.emit(level, title, detail)
         colour = LIGHT_COLOURS[level]
         self.status_light.setStyleSheet(f"background-color: {colour}; border-radius: {LIGHT_SIZE // 2}px;")
         self.status_title.setText(title)

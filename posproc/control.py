@@ -10,7 +10,7 @@ import json
 import math
 import time
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2          # 2: mark "folder" + summary in mark_done/closed_marks (v1 commands unchanged)
 HEARTBEAT_S = 60.0
 COMMANDS = ("status", "start", "mark", "stop", "quit")
 
@@ -40,6 +40,9 @@ def parse_command(line: str) -> dict:
         seconds = msg.get("seconds", None)
         if seconds is not None and (not isinstance(seconds, (int, float)) or seconds <= 0):
             raise CommandError("'seconds' must be a positive number")
+        folder = msg.get("folder", None)
+        if folder is not None and (not isinstance(folder, str) or not folder.strip()):
+            raise CommandError("'folder' must be a full folder path")
     return msg
 
 
