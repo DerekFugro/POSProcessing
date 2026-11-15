@@ -40,7 +40,15 @@ def grade(value: float, good: float, warn: float) -> str:
     return Health.GOOD if value <= good else Health.WARN if value <= warn else Health.BAD
 
 
-def health_summary(s: LiveStatus, age_s: float) -> dict[str, tuple[str, str]]:
+def nav_age(s: LiveStatus, now: float | None = None) -> float:
+    """Seconds since navigation data (Group 1) last arrived; inf if never."""
+    return ((time.time() if now is None else now) - s.nav_time) if s.nav_time else float("inf")
+
+
+NO_NAV_TEXT = "No navigation data (Group 1)"
+
+
+def health_summary(s: LiveStatus, age_s: float, now: float | None = None) -> dict[str, tuple[str, str]]:
     """Text and grade for each health line."""
     out = {}
     if age_s > STALE_S:
@@ -64,11 +72,16 @@ def health_summary(s: LiveStatus, age_s: float) -> dict[str, tuple[str, str]]:
     out["pcs"] = (s.source_ip or "searching...", Health.GOOD if s.source_ip else Health.NONE)
     out["position"] = (f"{s.lat:.7f}, {s.lon:.7f}, h {s.h:.2f} m, {s.speed:.1f} m/s" if s.lat == s.lat else "-",
                        Health.NONE)
+    if age_s <= STALE_S and s.source_ip and nav_age(s, now) > STALE_S:
+        # POS is talking but not navigating: don't show the last solution as if it were current
+        out["align"] = (NO_NAV_TEXT, Health.BAD)
+        for key in ("pos_rms", "att_rms", "position"):
+            out[key] = ("-", Health.NONE)
     return out
 
 
 def record_status(s: LiveStatus, age_s: float, waited_s: float, recording: bool = False,
-                  log: LiveStatus | None = None) -> tuple[str, str, str]:
+                  log: LiveStatus | None = None, now: float | None = None) -> tuple[str, str, str]:
     """One plain-language status for the Record tab: (Health grade, title, detail).
 
     s, age_s: latest display-port status and its age. waited_s: time since listening began.
@@ -79,6 +92,11 @@ def record_status(s: LiveStatus, age_s: float, waited_s: float, recording: bool 
         if not s.source_ip and waited_s < LOOKING_FOR_POS_S:
             return Health.NONE, "Looking for the POS...", "Waiting for data from the POS."
         return Health.BAD, "No data from the POS", "Check the POS is switched on and the network cable is plugged in."
+    if nav_age(s, now) > STALE_S:
+        if not s.nav_time and waited_s < LOOKING_FOR_POS_S:
+            return Health.NONE, "Looking for the POS...", "Waiting for navigation data from the POS."
+        return Health.BAD, "No navigation from the POS", ("The POS is on but not sending a position. "
+                                                           "It may be in standby - start navigation in POSView.")
     if recording and log is not None and log.lever_gnss is not None and all(v == 0.0 for v in log.lever_gnss):
         return Health.WARN, "POS lever arms not set", "The POS reports zero lever arms - check POSView."
     if recording and log is not None and log.warnings:

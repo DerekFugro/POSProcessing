@@ -9,7 +9,7 @@ import shutil
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
                                QSplitter, QVBoxLayout, QWidget)
 
@@ -67,6 +67,8 @@ def duration_text(seconds: float) -> str:
 
 
 class RecordPanel(QWidget):
+    light_changed = Signal(str, str, str)      # Health grade, title, detail (about once a second)
+
     def __init__(self, settings, logger_panel: LoggerPanel, parent=None):
         super().__init__(parent)
         self.settings = settings
@@ -93,6 +95,8 @@ class RecordPanel(QWidget):
         self.progress_label = QLabel()
         self.progress_label.setWordWrap(True)
         self.send_button = QPushButton("Send this recording to the Process tab")
+        self.controlled_label = QLabel()
+        self.controlled_label.setWordWrap(True)
         self.live_map = LiveMapView(Path(self.settings.tile_cache_dir))
         self.left_widget = QWidget()
         self.status_row = QWidget()
@@ -104,6 +108,8 @@ class RecordPanel(QWidget):
         self._listen_start = time.monotonic()
         self._record_start = 0.0
         self._running = False         # follows logger_panel.running_changed
+        self._controller = ""         # name of the app controlling recording, '' = manual
+        self._light = (Health.NONE, "", "")
 
     def _create_layouts(self):
         self.status_text_layout = QVBoxLayout()
@@ -125,6 +131,7 @@ class RecordPanel(QWidget):
         self.left_layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         self.left_layout.setSpacing(SPACING)
         self.left_layout.addWidget(self.status_row)
+        self.left_layout.addWidget(self.controlled_label)
         self.left_layout.addSpacing(SPACING)
         self.left_layout.addLayout(self.folder_row_layout)
         self.left_layout.addWidget(self.folder_preview)
@@ -164,18 +171,43 @@ class RecordPanel(QWidget):
         self.folder_preview.setStyleSheet(f"color: {styles.TEXT_SECONDARY};")
         self.progress_label.setStyleSheet("font-size: 12pt;")
         self.send_button.setStyleSheet(styles.RUN_BUTTON)
+        self.controlled_label.setStyleSheet(f"font-size: 12pt; font-weight: bold; color: {styles.ACCENT_BLUE};")
         self.record_button.setMinimumHeight(LIGHT_SIZE + SPACING)
         self.record_button.setStyleSheet(styles.RECORD_BUTTON)
 
     def _load_initial_state(self):
         self.folder_input.setText(self.logger_panel.out_folder)
         self.send_button.hide()
+        self.controlled_label.hide()
         self.progress_label.setText("Not recording.")
         self._show_running(self._running)
         self.refresh()
         self.timer.start(REFRESH_MS)
 
     # --- Business logic ---
+    @property
+    def light(self) -> tuple[str, str, str]:
+        """Current status light: (Health grade, title, detail)."""
+        return self._light
+
+    @property
+    def display_status(self) -> LiveStatus:
+        """Latest display-port (UDP 5600) status, about 1 Hz."""
+        return self._health[0]
+
+    @property
+    def recording_seconds(self) -> float:
+        return time.monotonic() - self._record_start if self._running else 0.0
+
+    def set_controller(self, name: str, folder: str):
+        """Another app runs recording: lock the folder and button, show who is in control."""
+        self._controller = name
+        self.controlled_label.setText(f"Controlled by {name} - recording is started and stopped there.")
+        self.controlled_label.setVisible(bool(name))
+        if folder:
+            self._set_folder(folder)
+        self._show_running(self._running)
+
     def _folder(self) -> str:
         return self.folder_input.text().strip()
 
@@ -229,8 +261,9 @@ class RecordPanel(QWidget):
         self.record_button.setText(STOP_TEXT if running else START_TEXT)
         self.record_button.setStyleSheet(styles.STOP_RECORD_BUTTON if running else styles.RECORD_BUTTON)
         for w in (self.folder_input, self.browse_button):
-            w.setEnabled(not running)
-        self.send_button.setVisible(not running and bool(self.logger_panel.last_files))
+            w.setEnabled(not running and not self._controller)
+        self.record_button.setEnabled(not self._controller)
+        self.send_button.setVisible(not running and bool(self.logger_panel.last_files) and not self._controller)
 
     def _on_health_panel_status(self, s: LiveStatus, age: float):
         self._health = (s, age)
@@ -253,6 +286,8 @@ class RecordPanel(QWidget):
         s, age = self._health
         level, title, detail = record_status(s, age, time.monotonic() - self._listen_start,
                                              self._running, self._log)
+        self._light = (level, title, detail)
+        self.light_changed.emit(level, title, detail)
         colour = LIGHT_COLOURS[level]
         self.status_light.setStyleSheet(f"background-color: {colour}; border-radius: {LIGHT_SIZE // 2}px;")
         self.status_title.setText(title)
@@ -284,4 +319,4 @@ class RecordPanel(QWidget):
         elif self.logger_panel.last_files:
             files = self.logger_panel.last_files
             self.progress_label.setText(f"Stopped. {count_text(len(files), 'file')} saved in {Path(files[0]).parent}")
-            self.send_button.setVisible(True)
+            self.send_button.setVisible(not self._controller)

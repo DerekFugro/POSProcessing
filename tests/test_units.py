@@ -104,10 +104,13 @@ def test_logger_writes_into_session_folder(tmp_path):
     assert lg.watch.status.session_folder == str(folders[0])
 
 
-def _live(align=0, gnss="OmniSTAR G2", nsv=29, rms=(0.35, 0.35, 0.45), ip="192.168.0.40"):
+def _live(align=0, gnss="OmniSTAR G2", nsv=29, rms=(0.35, 0.35, 0.45), ip="192.168.0.40", nav_age_s=0.5):
+    import time
+
     from posproc.logger import LiveStatus
 
-    return LiveStatus(align=align, gnss_status=gnss, nsv=nsv, rms_neu=rms, source_ip=ip)
+    return LiveStatus(align=align, gnss_status=gnss, nsv=nsv, rms_neu=rms, source_ip=ip,
+                      nav_time=time.time() - nav_age_s)
 
 
 def test_record_status_light():
@@ -191,3 +194,177 @@ def test_zero_lever_arms_flagged():
     assert record_status(_live(), 0.5, 60, True, log)[:2] == (Health.WARN, "POS lever arms not set")
     log.lever_gnss = good
     assert record_status(_live(), 0.5, 60, True, log)[0] == Health.GOOD
+
+
+def test_no_navigation_detected():
+    """POS sends display data (GNSS etc.) but no Group 1: seen on 2026-11-15 with the POS in standby."""
+    from posproc.display import NO_NAV_TEXT, Health, health_summary, record_status
+    from posproc.logger import LiveStatus
+
+    stale = _live(nav_age_s=30)                     # last Full navigation 30 s ago, still in memory
+    assert record_status(stale, 0.5, 60)[:2] == (Health.BAD, "No navigation from the POS")
+    rows = health_summary(stale, 0.5)
+    assert rows["align"] == (NO_NAV_TEXT, Health.BAD) and rows["pos_rms"][0] == "-"
+    never = LiveStatus(gnss_status="OmniSTAR G2", nsv=32, source_ip="192.168.0.40")
+    assert record_status(never, 0.5, 2)[0] == Health.NONE          # just started: still looking
+    assert record_status(never, 0.5, 30)[:2] == (Health.BAD, "No navigation from the POS")
+    assert health_summary(_live(), 0.5)["align"][1] == Health.GOOD  # fresh navigation unchanged
+
+
+def test_logger_warns_when_needed_group_stops():
+    from posproc.logger import LiveStatus, PcsLogger
+
+    lg = PcsLogger("x", ".", log=lambda m: None)
+    for g in (1, 2, 3, 10001):
+        lg.watch.counts[g] = 100                     # all seen earlier in the recording
+    s = LiveStatus(group_rates={1: 50.0, 2: 1.0, 3: 1.0, 10001: 4.0})
+    assert lg._warnings(60, s) == []
+    s.group_rates = {1: 0.0, 2: 0.0, 3: 1.0, 10001: 4.0}       # navigation stopped mid-recording
+    w = lg._warnings(60, s)
+    assert len(w) == 1 and "1 (navigation)" in w[0] and "2 (RMS)" in w[0]
+
+
+def test_control_protocol_lines():
+    import json
+
+    import pytest
+
+    from posproc.control import CommandError, message, parse_command
+
+    assert parse_command('{"cmd":"status","id":7}') == {"cmd": "status", "id": 7}
+    assert parse_command('{"cmd":"mark","label":"Location 3","seconds":300}')["label"] == "Location 3"
+    for bad in ("", "hello", "[1]", '{"cmd":"jump"}', '{"cmd":"mark"}', '{"cmd":"mark","label":"x","seconds":-1}'):
+        with pytest.raises(CommandError):
+            parse_command(bad)
+    out = json.loads(message("reply", {"cmd": "status", "id": "a1"}, ok=True, nav={"lat_deg": float("nan")}))
+    assert out["type"] == "reply" and out["id"] == "a1" and out["nav"]["lat_deg"] is None and "time" in out
+
+
+def test_mark_recorder_writes_csv_for_its_time(tmp_path):
+    import csv
+
+    from posproc.marks import MARK_COLUMNS, NAV_COLUMNS, MarkRecorder, safe_label
+
+    done = []
+    rec = MarkRecorder(on_done=done.append)
+    snap = {"time1_s": 1000.0, "lat_deg": 37.6, "light": "green", "message": "POS ready"}
+    info = rec.start(tmp_path, "Location 3 / east", 2.0, snap)
+    assert info["mark"] == 1 and safe_label("Location 3 / east") == "Location_3_east"
+    row = dict.fromkeys(NAV_COLUMNS, 0.0)
+    for k in range(0, 160):                     # 50 Hz for 3.2 s; mark is 2 s
+        rec.add_nav({**row, "time1_s": 1000.0 + k * 0.02})
+    assert len(done) == 1 and done[0]["rows"] == 101          # 0.00 .. 2.00 s inclusive
+    with open(done[0]["file"], newline="") as fh:
+        rows = list(csv.reader(fh))
+    assert rows[0] == MARK_COLUMNS and len(rows) == 102 and rows[1][-2] == "grey"
+    with open(tmp_path / "marks.csv", newline="") as fh:
+        summary = list(csv.DictReader(fh))
+    assert summary[0]["label"] == "Location 3 / east" and summary[0]["light"] == "green"
+    assert summary[0]["file"] == done[0]["file"]                  # full path
+    rec.start(tmp_path, "Location 4", 300, snap)
+    rec.add_nav({**row, "time1_s": 2000.0})
+    closed = rec.close_all()                    # recording stopped early
+    assert closed[0]["mark"] == 2 and closed[0]["complete"] is False and closed[0]["rows"] == 1
+    assert closed[0]["first_time1_s"] == 2000.0 and "worst_light" in closed[0]
+
+
+def test_watcher_group1_fields_match_file_reader():
+    """Live parser's time/roll/pitch/heading agree with the file reader on a real recording."""
+    from pathlib import Path
+
+    import pytest
+
+    from posproc.logger import _StreamWatcher, nav_row
+    from posproc.pcs import read_pcs
+
+    f = Path("F:/SurveyorPOS_20261114_183242/LV_1_202611141832.000")
+    if not f.exists():
+        pytest.skip("ARAN recording on F: not available")
+    rows = []
+    w = _StreamWatcher()
+    w.on_nav = rows.append
+    w.feed(f.read_bytes())
+    g1 = read_pcs([f]).g1
+    first = rows[0]
+    assert first["time_type"] == "UTC"                    # file reader adds 18 s to make GPS time
+    match = g1[abs(g1["t"] - 18.0 - first["time1_s"]) < 1e-6][0]
+    for key, col in (("lat_deg", "lat"), ("lon_deg", "lon"), ("roll_deg", "roll"), ("pitch_deg", "pitch"),
+                     ("heading_deg", "heading")):
+        assert abs(first[key] - match[col]) < 1e-6, key
+
+
+def test_mark_in_given_folder_and_errors(tmp_path):
+    import pytest
+
+    from posproc.marks import MarkError, MarkRecorder
+
+    session = tmp_path / "SurveyorPOS_20261115_160000"
+    session.mkdir()
+    pos3 = tmp_path / "Site" / "Cam1" / "Position3"
+    pos3.mkdir(parents=True)
+    rec = MarkRecorder()
+    info = rec.start(session, "Position3", 300, {}, folder=str(pos3))
+    assert info["file"] == str(pos3 / "01_Position3.csv") and (pos3 / "01_Position3.csv").exists()
+    assert not (session / "marks").exists()                     # not in the default folder
+    assert str(pos3 / "01_Position3.csv") in (session / "marks.csv").read_text()
+    with pytest.raises(MarkError, match="does not exist"):
+        rec.start(session, "x", 300, {}, folder=str(tmp_path / "nope"))
+    with pytest.raises(MarkError, match="full path"):
+        rec.start(session, "x", 300, {}, folder="Position4")
+    info2 = rec.start(session, "Position4", 300, {})            # no folder: protocol 1 behaviour
+    assert info2["mark"] == 2 and info2["file"] == str(session / "marks" / "02_Position4.csv")
+    rec.close_all()
+
+
+def test_mark_summary_values():
+    from posproc.marks import NAV_COLUMNS, MarkRecorder
+
+    done = []
+    rec = MarkRecorder(on_done=done.append)
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        rec.start(d, "P1", 1.0, {})
+        base = {**dict.fromkeys(NAV_COLUMNS, 0.0), "time_type": "UTC", "rms_n_m": 0.35, "rms_e_m": 0.35,
+                "rms_d_m": 0.45, "roll_deg": 0.30, "pitch_deg": 0.20, "heading_deg": 359.95}
+        rec.set_light("green", "POS ready")
+        rec.add_nav({**base, "time1_s": 100.0})
+        rec.set_light("orange", "Position accuracy low")
+        rec.add_nav({**base, "time1_s": 100.5, "rms_e_m": 1.2, "heading_deg": 0.05, "roll_deg": 0.32})
+        rec.set_light("green", "POS ready")
+        rec.add_nav({**base, "time1_s": 101.0})
+        rec.add_nav({**base, "time1_s": 101.5})                # past 1 s: ends the mark
+    s = done[0]
+    assert s["complete"] is True and s["rows"] == 3 and s["green_whole_time"] is False
+    assert s["worst_light"] == "orange" and s["worst_message"] == "Position accuracy low"
+    assert s["max_rms_e_m"] == 1.2 and s["max_rms_n_m"] == 0.35 and s["max_rms_d_m"] == 0.45
+    assert abs(s["heading_spread_deg"] - 0.10) < 1e-9          # across north, not 359.9
+    assert abs(s["roll_spread_deg"] - 0.02) < 1e-9 and s["pitch_spread_deg"] == 0.0
+    assert s["time_type"] == "UTC" and s["first_time1_s"] == 100.0 and s["last_time1_s"] == 101.0
+
+
+def test_mark_ends_on_time_when_navigation_stops(tmp_path):
+    import time
+
+    from posproc.marks import WALL_GRACE_S, MarkRecorder
+
+    done = []
+    rec = MarkRecorder(on_done=done.append)
+    rec.start(tmp_path, "P1", 10, {})
+    rec.tick(time.monotonic() + 5)                            # still running
+    assert not done
+    rec.tick(time.monotonic() + 10 + WALL_GRACE_S + 1)        # no Group 1 at all: ends by PC clock
+    assert done and done[0]["rows"] == 0 and done[0]["green_whole_time"] is False
+
+
+def test_control_mark_folder_checked():
+    import json
+
+    import pytest
+
+    from posproc.control import CommandError, parse_command
+
+    line = json.dumps({"cmd": "mark", "label": "P1", "folder": r"F:\Site\Pos1"})
+    assert parse_command(line)["folder"] == r"F:\Site\Pos1"
+    for bad in ('{"cmd":"mark","label":"P1","folder":""}', '{"cmd":"mark","label":"P1","folder":5}'):
+        with pytest.raises(CommandError):
+            parse_command(bad)

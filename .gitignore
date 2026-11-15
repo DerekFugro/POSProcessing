@@ -15,7 +15,8 @@ test_rt27/
 test_run_*.txt
 
 # Third-party binaries and installers (kept on the PC / share, not in git)
-installers/
+installers/*
+!installers/README.txt
 tools/rtklib/*.exe
 
 # Applanix manuals are copyrighted - not for a public repo (see D:\Manuals)
