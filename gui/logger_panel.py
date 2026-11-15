@@ -31,6 +31,8 @@ class _Bridge(QObject):
 
 class LoggerPanel(QWidget):
     files_ready = Signal(list)          # logged files to add to the processing list
+    running_changed = Signal(bool)      # logger started (True) or stopped (False)
+    logging_status = Signal(object)     # LiveStatus from the logger, about once a second
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -141,7 +143,7 @@ class LoggerPanel(QWidget):
     def _load_initial_state(self):
         self.host_input.setText(self.settings.logger_host)
         self.port_spin.setValue(self.settings.logger_port or DEFAULT_PORT)
-        self.out_input.setText(self.settings.logger_out)
+        self.set_out_folder(self.settings.logger_out)
         self.name_input.setText(getattr(self.settings, "logger_session_name", DEFAULT_SESSION_NAME))
         self._update_folder_preview()
         self._set_running(False)
@@ -158,6 +160,19 @@ class LoggerPanel(QWidget):
         self.stop_button.setEnabled(running)
         for w in (self.host_input, self.port_spin, self.out_input, self.out_browse_button, self.name_input):
             w.setEnabled(not running)
+        self.running_changed.emit(running)
+
+    @property
+    def last_files(self) -> list[str]:
+        """Files written by the last finished logger run."""
+        return list(self._last_files)
+
+    @property
+    def out_folder(self) -> str:
+        return self.out_input.text().strip()
+
+    def set_out_folder(self, folder: str):
+        self.out_input.setText(str(Path(folder)) if folder.strip() else "")
 
     def _session_name(self) -> str:
         return self.name_input.text().strip() or DEFAULT_SESSION_NAME
@@ -183,26 +198,32 @@ class LoggerPanel(QWidget):
     def _on_out_browse_button_clicked(self):
         folder = QFileDialog.getExistingDirectory(self, "Folder for POS logs", self.out_input.text())
         if folder:
-            self.out_input.setText(folder)
+            self.set_out_folder(folder)
 
     def _on_start_button_clicked(self):
+        self.start_logging()
+
+    def start_logging(self) -> bool:
+        """Start the logger with the current inputs. Returns False if it could not start."""
+        if self.is_running:
+            return True
         host, name = self.host_input.text().strip(), self._session_name()
         if not host:
             QMessageBox.warning(self, "Logger", "Enter the PCS IP address.")
-            return
+            return False
         if BAD_NAME_CHARS.search(name):
             QMessageBox.warning(self, "Logger", 'The session name cannot contain \\ / : * ? " < > |')
-            return
-        if not self.out_input.text().strip():
+            return False
+        if not self.out_folder:
             self._on_out_browse_button_clicked()          # ask for the folder before logging
-        out = self.out_input.text().strip()
+        out = self.out_folder
         if not out:
-            return
+            return False
         try:
             Path(out).mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             QMessageBox.warning(self, "Logger", f"Cannot use {out}:\n{exc}")
-            return
+            return False
         self.settings.logger_host, self.settings.logger_port, self.settings.logger_out = host, self.port_spin.value(), out
         self.settings.logger_session_name = name
         self.settings.save()
@@ -213,6 +234,7 @@ class LoggerPanel(QWidget):
         self._set_running(True)
         self.process_button.setEnabled(False)
         self._thread.start()
+        return True
 
     def _run_logger(self):
         try:
@@ -221,7 +243,10 @@ class LoggerPanel(QWidget):
             self._bridge.finished.emit()
 
     def _on_stop_button_clicked(self):
-        if self._logger:
+        self.stop_logging()
+
+    def stop_logging(self):
+        if self._logger and self.is_running:
             self._logger.stop()
             self.state_value.setText("Stopping...")
 
@@ -232,17 +257,21 @@ class LoggerPanel(QWidget):
             self._thread.join(timeout)
 
     def _on_bridge_finished(self):
-        self._set_running(False)
         self._last_files = list(self._logger.watch.status.files) if self._logger else []
+        self._set_running(False)
         self.process_button.setEnabled(bool(self._last_files))
         self.log_view.appendPlainText(f"Stopped. {len(self._last_files)} file(s) written.")
 
     def _on_process_button_clicked(self):
+        self.send_files_to_processing()
+
+    def send_files_to_processing(self):
         if self._last_files:
-            self.files_ready.emit(self._last_files)
+            self.files_ready.emit(list(self._last_files))
 
     def _on_bridge_status(self, s: LiveStatus):
         self._show(s)
+        self.logging_status.emit(s)
 
     def _show(self, s: LiveStatus):
         self.state_value.setText(s.state + (f"  -  {s.error}" if s.error else ""))

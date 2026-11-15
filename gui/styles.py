@@ -30,6 +30,17 @@ QPushButton {{ background-color: {ACCENT_GREEN}; color: white; font-weight: bold
 QPushButton:hover {{ background-color: #2ecc71; }}
 QPushButton:disabled {{ background-color: #7f8c8d; }}
 """
+RECORD_BUTTON = f"""
+QPushButton {{ background-color: {ACCENT_GREEN}; color: white; font-size: 18pt; font-weight: bold;
+              border-radius: 8px; padding: 14px; }}
+QPushButton:hover {{ background-color: #2ecc71; }}
+QPushButton:disabled {{ background-color: #7f8c8d; }}
+"""
+STOP_RECORD_BUTTON = f"""
+QPushButton {{ background-color: {ACCENT_RED}; color: white; font-size: 18pt; font-weight: bold;
+              border-radius: 8px; padding: 14px; }}
+QPushButton:hover {{ background-color: #ff6b5b; }}
+"""
 CANCEL_BUTTON = f"""
 QPushButton {{ background-color: {ACCENT_RED}; color: white; border-radius: 4px; padding: 8px; }}
 QPushButton:disabled {{ background-color: #7f8c8d; }}

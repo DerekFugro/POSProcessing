@@ -16,6 +16,7 @@ from posproc.pcs import group_sessions
 from . import styles
 from .logger_panel import LoggerPanel
 from .map_view import HAS_WEBENGINE, MapView
+from .record_panel import RecordPanel
 from .settings_dialog import SettingsDialog
 from .worker import PipelineWorker
 
@@ -30,7 +31,6 @@ SPACING = 6
 PROGRESS_STEPS = 1000
 PCS_FILTER = "POS log files (*.0[0-9][0-9]);;All files (*)"
 RATE_CHOICES = [("10 Hz", 10.0), ("1 Hz", 1.0), ("All epochs (~50 Hz)", 0.0)]
-DIAGNOSTICS_PLACEHOLDER = "Live POS detail will move here. For now it is on the Record tab."
 SETTINGS_PLACEHOLDER = "Settings will move onto this tab. For now use the button below."
 
 
@@ -47,8 +47,6 @@ class MainWindow(QMainWindow):
     def _create_widgets(self):
         self.main_tabs = QTabWidget()
         self.process_tab = QWidget()
-        self.diagnostics_tab = QWidget()
-        self.diagnostics_label = QLabel(DIAGNOSTICS_PLACEHOLDER)
         self.settings_tab = QWidget()
         self.settings_label = QLabel(SETTINGS_PLACEHOLDER)
         self.left_panel = QWidget()
@@ -95,6 +93,7 @@ class MainWindow(QMainWindow):
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
         self.logger_panel = LoggerPanel(self.settings)
+        self.record_panel = RecordPanel(self.settings, self.logger_panel)
 
         self._thread: QThread | None = None
         self._worker: PipelineWorker | None = None
@@ -152,20 +151,15 @@ class MainWindow(QMainWindow):
         self.process_layout.setContentsMargins(0, 0, 0, 0)
         self.process_layout.addWidget(self.splitter)
 
-        self.diagnostics_layout = QVBoxLayout(self.diagnostics_tab)
-        self.diagnostics_layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
-        self.diagnostics_layout.addWidget(self.diagnostics_label)
-        self.diagnostics_layout.addStretch()
-
         self.settings_layout = QVBoxLayout(self.settings_tab)
         self.settings_layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         self.settings_layout.addWidget(self.settings_label)
         self.settings_layout.addWidget(self.settings_button, 0, Qt.AlignmentFlag.AlignLeft)
         self.settings_layout.addStretch()
 
-        self.main_tabs.addTab(self.logger_panel, "Record")
+        self.main_tabs.addTab(self.record_panel, "Record")
         self.main_tabs.addTab(self.process_tab, "Process")
-        self.main_tabs.addTab(self.diagnostics_tab, "Diagnostics")
+        self.main_tabs.addTab(self.logger_panel, "Diagnostics")
         self.main_tabs.addTab(self.settings_tab, "Settings")
         self.setCentralWidget(self.main_tabs)
 
@@ -197,7 +191,6 @@ class MainWindow(QMainWindow):
         self.log_view.setStyleSheet("font-family: Consolas, monospace; font-size: 9pt;")
         self.status_label.setStyleSheet(f"color: {styles.TEXT_SECONDARY};")
         self.pcs_summary_label.setStyleSheet(f"color: {styles.TEXT_SECONDARY};")
-        self.diagnostics_label.setStyleSheet(f"color: {styles.TEXT_SECONDARY};")
         self.settings_label.setStyleSheet(f"color: {styles.TEXT_SECONDARY};")
 
     # --- Initial State ---
@@ -207,7 +200,7 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(False)
         self.open_folder_button.setEnabled(False)
         self._update_pcs_summary()
-        self.main_tabs.setCurrentWidget(self.logger_panel)
+        self.main_tabs.setCurrentWidget(self.record_panel)
 
     # --- Business logic ---
     def _list_items(self, lw: QListWidget) -> list[str]:
