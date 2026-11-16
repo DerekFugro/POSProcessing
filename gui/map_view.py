@@ -23,6 +23,7 @@ except ImportError:          # map falls back to a message
 MAX_POINTS = 4000
 MARGIN = 0
 LIVE_TRAIL_POINTS = 3600      # ~1 hour at the 1 Hz display rate
+FIT_MAX_ZOOM = 18             # street level; a parked truck's few-cm track would zoom past the map detail
 
 _HEAD = """<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="/leaflet/leaflet.css"/>
@@ -54,9 +55,28 @@ L.control.layers(null, layers).addTo(map);
 const lg = L.control({position:'bottomleft'});
 lg.onAdd = () => { const d = L.DomUtil.create('div','legend');
   d.innerHTML = '<i style="background:#e74c3c"></i>Real-time<br><i style="background:#27ae60"></i>Post-processed<br>' +
+                '<i style="background:#27ae60;height:10px;width:10px;border-radius:5px;border:2px solid #fff;box-shadow:0 0 1px #000"></i>Start ' +
+                '<i style="background:#2c3e50;height:8px;width:8px;border-radius:4px;border:2px solid #fff;box-shadow:0 0 1px #000;margin-left:6px"></i>End<br>' +
                 '<i style="background:#3498db;height:8px;width:8px;border-radius:4px"></i>CSV capture'; return d; };
 lg.addTo(map);
-if (all.length) map.fitBounds(L.latLngBounds(all).pad(0.1)); else map.setView([40, -95], 4);
+const ends = L.layerGroup().addTo(map);
+for (const s of D.sessions) {
+  const tr = s.ppk.length ? s.ppk : s.rt;
+  if (!tr.length) continue;
+  L.circleMarker(tr[0], {radius:9, color:'#fff', weight:3, fillColor:'#27ae60', fillOpacity:1})
+    .bindTooltip('Start ' + s.name + (s.t0 ? ' ' + s.t0 : '')).addTo(ends);
+  L.circleMarker(tr[tr.length - 1], {radius:6, color:'#fff', weight:2, fillColor:'#2c3e50', fillOpacity:1})
+    .bindTooltip('End ' + s.name + (s.t1 ? ' ' + s.t1 : '')).addTo(ends);
+}
+layers['Start / end'] = ends;
+// Fit to the data, never past street level. The tab may be hidden (size 0) when this runs, so
+// fit again when the map gets its real size, until the user pans or zooms.
+let userMoved = false;
+const fit = () => { if (all.length) map.fitBounds(L.latLngBounds(all).pad(0.1), {maxZoom: __FIT_MAX_ZOOM__});
+                    else map.setView([40, -95], 4); };
+for (const ev of ['mousedown', 'wheel', 'touchstart']) map.getContainer().addEventListener(ev, () => { userMoved = true; });
+map.on('resize', () => { if (!userMoved) fit(); });
+fit();
 </script></body></html>"""
 
 LIVE_JS = """
@@ -126,7 +146,8 @@ class MapView(QWidget):
             for sr in result.sessions:
                 g1 = sr.pcs.g1
                 entry = {"name": sr.name, "rt": _decimate(g1["lat"], g1["lon"]) if len(g1) else [], "ppk": [],
-                         "base": list(sr.base_latlon) if sr.base_latlon else None, "base_name": sr.station}
+                         "base": list(sr.base_latlon) if sr.base_latlon else None, "base_name": sr.station,
+                         "t0": f"{sr.start:%H:%M:%S}" if sr.start else "", "t1": f"{sr.end:%H:%M:%S}" if sr.end else ""}
                 if sr.fusion is not None:
                     entry["ppk"] = _decimate(sr.fusion.lat, sr.fusion.lon)
                 data["sessions"].append(entry)
@@ -135,7 +156,8 @@ class MapView(QWidget):
                     mid = r.points[len(r.points) // 2]
                     data["csv"].append({"name": r.path.name, "pt": [mid[0], mid[1]], "ok": bool(r.ok)})
         if HAS_WEBENGINE:
-            url = self.server.put_page("result.html", _HEAD + RESULT_JS.replace("__DATA__", json.dumps(data)))
+            url = self.server.put_page("result.html", _HEAD + RESULT_JS.replace("__DATA__", json.dumps(data))
+                                          .replace("__FIT_MAX_ZOOM__", str(FIT_MAX_ZOOM)))
             self.web_view.load(QUrl(url))
 
 
