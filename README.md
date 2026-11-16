@@ -132,8 +132,9 @@ only listens; nothing is sent to the POS.
   1, 2, 3 or 10001 is missing.
 - Groups on the logging port are chosen in POSView (Logging > Ethernet Logging). Keep the same set
   the crews log to USB (1, 2, 3, 4, 9, 10, 11, 99, 10001, 10006, 10009) so POSPac can also use it.
-- POSView can stay open as normal. Only the logging port itself takes one connection, so POSView's
-  own Ethernet logging can't run while this app is logging.
+- POSView can stay open as normal. The PCS logging port accepted **two** recorders at once on
+  2026-11-15 (two copies of this app, both with full 50 Hz data), so it is not limited to one
+  connection; still, record with one program at a time to keep things simple.
 - If the link drops, the logger reconnects by itself and keeps writing the same log. Data sent while
   disconnected may be lost (check the log), so keep PCS USB logging on as a backup.
 - **Send this recording to the Process tab** (Record tab) puts the files in the POS file list; press Run.
@@ -163,7 +164,23 @@ its rows match more than one visit to the same spot or match worse than the tole
 
 ## Results so far and limits
 
-Test data: ARAN69, 2025-05-19, Richmond VA, 175 minutes.
+**ARAN59, 2026-11-14, parked 40 min (`F:\SurveyorPOS_20261114_183242`):** recorded with this app,
+processed end to end (Trimble -> NOAA LS02 39 km, 30 s -> RTKLIB -> blend): **98% fixed**; PPK
+scatter 1.6 / 1.0 / 4.2 cm (N/E/U std); the installed exe gives a byte-identical trajectory.
+With antenna calibrations, heights rose 2.4 cm (LS02) / 2.9 cm (CORB) and the two bases agree to
+0.7 / 0.3 / 3.1 cm. Not yet tested: a **driving** recording, and a check against a known point.
+
+**Surveyor test runs, 2026-11-15** (`F:\ExtrinsicAran59_*`): 3 runs, 4 positions, every mark a
+full 5 min (15,000 rows), green the whole time, mark rows 100% found in the POS file; parked
+attitude spread roll/pitch ~0.02 deg, heading 0.10-0.21 deg (normal POS heading noise).
+To process when NOAA posts 2026-11-15 data (normally the next morning).
+
+**2026-11-15 POS incident:** the POS came up with its setup cleared (lever arms all 0, GPS time,
+other logging groups, no Group 3) and stuck in Fine alignment; later restored. The app now warns
+for zero lever arms and for "No navigation from the POS". Recordings 12:53-13:21 that day cannot
+be processed (no Group 3 / zero lever arms).
+
+**Earlier test data:** ARAN69, 2025-05-19, Richmond VA, 175 minutes.
 
 - Nearest working NOAA CORS is **LS02, ~39 km**; NOAA thins data older than 30 days to
   30-second spacing. Even so RTKLIB got **83% fixed / 17% float**.
@@ -187,6 +204,9 @@ Test data: ARAN69, 2025-05-19, Richmond VA, 175 minutes.
 
 `run_tests.bat` (uses the ARAN69 2025-05-19 sample data). Developer: `pytest -q` with
 `POSPROC_SAMPLES` set to the Surveyor sample folder; without it the sample-data tests skip.
+On ARAN59 (2026-11-15): 25 passed, 7 skipped - the sample folder and any ARAN CSV log
+(`*_Processed.csv` with its POS files) are not on that PC yet, so the CSV matching has not been
+tested there. One test reads `F:\SurveyorPOS_20261114_183242` when present.
 
 ## For developers
 

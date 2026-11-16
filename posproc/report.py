@@ -58,6 +58,36 @@ def _session_plot(sr) -> str:
     return _png(fig)
 
 
+def _cross_check_html(cc) -> str:
+    """Base-to-base comparison: realistic accuracy, what happened to each base's fixes."""
+    e = html.escape
+    if cc is None:
+        return ""
+    acc = cc.accuracy
+    if acc:
+        out = [f"<p><b>Realistic accuracy (95%): {acc['horizontal'] * 100:.0f} cm horizontal, "
+               f"{acc['vertical'] * 100:.0f} cm vertical</b> <span class='note'>(how closely two base "
+               f"stations agree: {e(acc['basis'])})</span></p>"]
+    else:
+        out = ["<p class='warn'>Realistic accuracy unknown: the base stations could not be compared.</p>"]
+    out.append("<table><tr><th>Base station</th><th>km</th><th>Fixed epochs</th><th>Confirmed by another base</th>"
+               "<th>Checked against floats</th><th>Unchecked</th><th>Thrown out (wrong fix)</th></tr>")
+    for site, p in cc.per_base.items():
+        cls = " class='warn'" if p["rejected"] else ""
+        out.append(f"<tr{cls}><td>{e(site)}</td><td>{p['dist_km']:.1f}</td><td>{p['fix']}</td><td>{p['confirmed']}</td>"
+                   f"<td>{p['float_checked']}</td><td>{p['unchecked']}</td><td>{p['rejected']}</td></tr>")
+    out.append("</table>")
+    if cc.pairs:
+        out.append("<table><tr><th>Base vs base</th><th>Answers</th><th>Epochs</th><th>Horiz. median</th>"
+                   "<th>Horiz. 95%</th><th>Vert. median</th><th>Vert. 95%</th></tr>")
+        for p in cc.pairs:
+            out.append(f"<tr><td>{e(p['a'])} vs {e(p['b'])}</td><td>{p['kind']}</td><td>{p['epochs']}</td>"
+                       f"<td>{_fmt(p['h_median'])}</td><td>{_fmt(p['h_95'])}</td>"
+                       f"<td>{_fmt(p['v_median'])}</td><td>{_fmt(p['v_95'])}</td></tr>")
+        out.append("</table><p class='note'>Distances in metres. Thrown-out fixes are not compared.</p>")
+    return "".join(out)
+
+
 def write_report(result, path: Path) -> Path:
     e = html.escape
     out = [f"<!doctype html><html><head><meta charset='utf-8'><title>PPK Report</title>"
@@ -75,7 +105,7 @@ def write_report(result, path: Path) -> Path:
         if sr.fusion is None:
             continue
         q = ", ".join(f"{k} {v:.0f}%" for k, v in sr.quality.items())
-        out.append(f"<p>Base station <b>{e(sr.station)}</b>, {sr.baseline_km:.1f} km, "
+        out.append(f"<p>Main base station <b>{e(sr.station)}</b>, {sr.baseline_km:.1f} km, "
                    f"{sr.base_interval_s:g} s data &middot; PPK quality: {e(q)} &middot; "
                    f"fixes used {sr.fusion.ppk_used}, rejected {sr.fusion.ppk_rejected}</p>")
         b, a = sr.rms_before, sr.rms_after
@@ -87,8 +117,8 @@ def write_report(result, path: Path) -> Path:
         out.append(f"<tr><td>After: PPK fit residual (RMS)</td><td>{_fmt(a.get('ppk_resid_north'))}</td>"
                    f"<td>{_fmt(a.get('ppk_resid_east'))}</td><td>{_fmt(a.get('ppk_resid_down'))}</td></tr></table>")
         out.append("<p class='note'>'After' is the formal 1-sigma from RTKLIB and the smoother. RTKLIB "
-                   "formal sigmas are usually optimistic, especially on long baselines; check against a "
-                   "known point for true accuracy.</p>")
+                   "formal sigmas are about 10x optimistic; use the realistic accuracy below.</p>")
+        out.append(_cross_check_html(sr.cross_check))
         out.append(f"<p class='note'>Attitude is not re-processed. Real-time attitude RMS, median (deg): roll "
                    f"{_fmt(b.get('roll'), 4)}, pitch {_fmt(b.get('pitch'), 4)}, heading {_fmt(b.get('heading'), 4)}.</p>")
         c = sr.correction_stats

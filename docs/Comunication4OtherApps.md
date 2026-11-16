@@ -45,8 +45,8 @@ folder `E:\DP\POSProcessor`. Not `launch.bat` (it uses `start`, which drops the 
 - From source, `.venv` must exist: run `launch.bat` once by hand (it builds it). Use
   `pythonw.exe` so no console window opens. stderr is not used for messages.
 - The app's saved manual "Save to" folder is **not** changed by `--out`.
-- Only one app may control recording at a time; the PCS logging port takes one connection.
-  Do not run a second copy, and do not record from POSView's Ethernet logging at the same time.
+- Run one controlling app at a time. (On 2026-11-15 the PCS logging port did serve two
+  copies at once with full data, but two recordings of the same drive only cause confusion.)
 
 Minimal Python (Surveyor is Python 3.12 / PySide6; `QProcess` works the same way):
 
@@ -183,6 +183,12 @@ So Surveyor can rate a position without reading the CSV:
 
 Values that could not be worked out (no readings) are `null`. For reference, a parked van on
 2026-11-15 gave about 0.01-0.02 deg spreads over 15 s and RMS 0.35 / 0.35 / 0.44 m (OmniSTAR).
+Over a full 5 minutes parked: roll/pitch spread ~0.02 deg but **heading 0.10-0.21 deg** - normal
+POS heading noise (heading RMS ~0.05 deg). Don't apply a 0.1 deg limit to heading.
+
+**Tested with SurveyorCalibration, 2026-11-15:** 3 runs, 4 positions on the ARAN59 truck (source
+app and installed exe): every mark complete (15,000 rows, green the whole time), mark rows 100%
+found in the POS file, summaries match the CSVs.
 
 ### Answers to Surveyor's questions (2026-11-15)
 

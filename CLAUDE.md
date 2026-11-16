@@ -33,6 +33,7 @@ TCP 5603). Owner: Derek Pescod (hardware / field). Repo: github.com/DerekFugro/P
 | `posproc/cors.py` | NOAA CORS station list, nearest-station pick, download (S3 bucket) |
 | `posproc/antenna.py` | NGS ANTEX download/cache, antenna names from RINEX, offsets |
 | `posproc/ppk.py` | Writes RTKLIB config, runs `rnx2rtkp`, reads `.pos` |
+| `posproc/multibase.py` | Compares PPK from the 3 nearest bases, throws out wrong fixes, merges, realistic accuracy |
 | `posproc/fuse.py` | Kalman + RTS smoother of (PPK antenna - real-time antenna) offset |
 | `posproc/csvlog.py` | Ties ARAN CSV rows to POS time, writes `<name>_PPK.csv` |
 | `posproc/pipeline.py` | Orchestration, per-session results, trajectory CSV |
@@ -83,6 +84,9 @@ copyrighted - they live in `D:\Manuals`).
   with ANTEX (`posproc/antenna.py`). RTKLIB-EX 2.5.1 option is `file-rcvantfile` -
   `file-rcvantp` is silently ignored. Convert to RINEX writes the rover antenna as `UNKNOWN_EXT`.
 - Group 3 GNSS status 12/13 on this firmware is undefined in the V6 ICD (name unknown).
+- ARAN59 POS (LV-220 S/N 10481, SW10.21): Time 1 = UTC (0x22), Group 1 at 50 Hz, Message 20 +
+  setup messages 21-62 are sent each time a logger connects. The logging port 5603 served two
+  loggers at once with full data (2026-11-15). Parked heading noise 0.1-0.2 deg over 5 min.
 
 ## Accuracy (ARAN69, 2025-05-19, base LS02 39 km, 30 s base data)
 
@@ -105,12 +109,28 @@ run_tests.bat                                                # all tests incl. s
 A full PPK run of the 175-minute sample takes about 4 minutes (RTKLIB is most of it).
 RINEX and `.pos` results are reused on re-runs when inputs are unchanged.
 
+On the ARAN59 bench/van PC (2026-11-15): Python is `.uv\python` inside the project (AppData
+written from Claude is private to Claude); the sample folder above is NOT there, so 7 sample
+tests skip. Real data there: `F:\SurveyorPOS_20261114_183242` (parked 40 min, processes at 98%
+fixed) and the Surveyor runs `F:\ExtrinsicAran59_*`. Installer: `packaging\build.ps1` ->
+installed `C:\Program Files\Fugro Roadware\ACSApps\POSProcessing` (version 3fa0c3a);
+`POSProcessing.exe --cli ...` processes without the window.
+
 ## To do (priority order)
 
-1. Truck test of Record/Diagnostics (5600 health, 5603 logging, auto PCS IP, firewall).
+1. Process a **driving** recording (so far only parked data) and the 2026-11-15 Surveyor runs
+   on F: once NOAA posts that day. Record/Diagnostics and Surveyor control were tested on the
+   ARAN59 truck 2026-11-15.
 2. Check accuracy against the Richmond GCPs (`RichmondTennisClick.gcp`; need zone/units).
-3. Report "After" RMS from a two-base comparison instead of RTKLIB sigmas.
+   Two-base check (LS02 vs CORB, 2026-11-14 parked): 0.7 / 0.3 / 3.1 cm with antenna calibrations.
+3. Done 2026-11-16: every session runs against 3 bases (`posproc/multibase.py`); fixes that
+   disagree are thrown out (floats used), Report shows realistic 95% accuracy from base-to-base
+   agreement. 2026-11-15 short runs: LS02 fixes 1 m off -> now float, ~30-40 cm.
 4. Antenna calibrations: done 2026-11-15 (Zephyr 2 + base from RINEX, NGS ngs20.atx).
 5. Test POS units of other years / firmware.
 6. Name GNSS mode 12; GPS week rollover inside a session; download base stations lazily.
-7. Installer: built 2026-11-15 (`packaging\build.ps1`); not yet installed on a second PC.
+7. Installer: built and installed on ARAN59 2026-11-15 (update over the old version tested).
+   Not tested: a PC without the Trimble tools, uninstall. Setup is unsigned ("Unknown publisher").
+8. Get an ARAN CSV log (`*_Processed.csv`) with its POS files onto the PC to test CSV matching
+   (`tests/test_sample_data.py` needs POSPROC_SAMPLES).
+9. SurveyorCalibration moves into `ACSApps` later (that project's change).

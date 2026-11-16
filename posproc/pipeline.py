@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import antenna, convert, cors, ppk, rt27
+from . import antenna, convert, cors, multibase, ppk, rt27
 from .config import Settings
 from .csvlog import CsvMatch, CsvMatcher
 from .fuse import FusionResult, fuse
@@ -42,6 +42,7 @@ class SessionResult:
     trajectory_csv: Path | None = None
     rms_before: dict = field(default_factory=dict)
     rms_after: dict = field(default_factory=dict)
+    cross_check: multibase.CrossCheck | None = None   # base-to-base comparison
     correction_stats: dict = field(default_factory=dict)
     error: str = ""
     warnings: list[str] = field(default_factory=list)
@@ -146,13 +147,12 @@ class Pipeline:
 
         step(4, f"{sr.name}: PPK processing")
         antex = self._antex(sr)
-        pos = None
-        for base in bases:
-            self.log(f"Trying base {base.station.site} ({base.station.dist_km:.1f} km, "
-                     f"{base.interval_s:g} s data)")
+        sols, used = [], {}
+        for base in bases:                                   # every base: they are compared below
+            self.log(f"Base {base.station.site} ({base.station.dist_km:.1f} km, {base.interval_s:g} s data)")
             base_ant = self._antennas(sr, antex, base)
-            conf = ppk.write_config(work / "rtklib.conf", base.xyz, s.elevation_mask_deg, s.navsys, s.ar_mode,
-                                    s.rover_antenna, base_ant, antex if base_ant else None)
+            conf = ppk.write_config(work / f"rtklib_{base.station.site}.conf", base.xyz, s.elevation_mask_deg,
+                                    s.navsys, s.ar_mode, s.rover_antenna, base_ant, antex if base_ant else None)
             out_pos = work / f"{sr.name}_{base.station.site}.pos"
             try:
                 ppk.run_rnx2rtkp(s.rnx2rtkp_exe, conf, rover_obs, base.obs_files,
@@ -162,22 +162,25 @@ class Pipeline:
                 self.log(str(exc))
                 continue
             q = ppk.quality_summary(cand)
-            self.log("PPK quality: " + ", ".join(f"{k} {v:.0f}%" for k, v in q.items()))
-            usable = q.get("fix", 0) + (q.get("float", 0) if s.use_float else 0)
-            if usable >= 20 or base is bases[-1]:
-                pos, sr.quality = cand, q
-                sr.station, sr.baseline_km, sr.base_interval_s = base.station.site, base.station.dist_km, base.interval_s
-                if base.station.lat or base.station.lon:
-                    sr.base_latlon = (base.station.lat, base.station.lon)
-                break
-        if pos is None:
+            self.log(f"{base.station.site} PPK quality: " + ", ".join(f"{k} {v:.0f}%" for k, v in q.items()))
+            sols.append(multibase.BaseSolution(base.station.site, base.station.dist_km, cand))
+            used[base.station.site] = base
+            self._check()
+        if not sols:
             raise ValueError("PPK failed with every base station tried.")
-        if sr.baseline_km > 30 and sr.quality.get("fix", 0) < 50:
-            sr.warnings.append(f"Base station is {sr.baseline_km:.0f} km away; only "
-                               f"{sr.quality.get('fix', 0):.0f}% fixed; expect decimetre (float) accuracy.")
-        if sr.baseline_km > 30 and sr.quality.get("fix", 0) >= 50:
-            sr.warnings.append(f"Base station is {sr.baseline_km:.0f} km away. Fixes at this distance can be "
-                               "wrong; check the result against a known point (e.g. the site GCPs).")
+        cc = multibase.cross_check(sols)
+        sr.cross_check, pos = cc, cc.pos
+        if not len(pos):
+            raise ValueError("No usable PPK answers from any base station.")
+        sr.quality = ppk.quality_summary(pos)
+        base = used[cc.primary]
+        sr.station, sr.baseline_km, sr.base_interval_s = base.station.site, base.station.dist_km, base.interval_s
+        if base.station.lat or base.station.lon:
+            sr.base_latlon = (base.station.lat, base.station.lon)
+        self._log_cross_check(cc)
+        for w in cc.warnings:
+            sr.warnings.append(w)
+            self.log("WARNING: " + w)
         if sr.base_interval_s > 5:
             sr.warnings.append(f"Base data is {sr.base_interval_s:g}-second (NOAA thins data older than "
                                "30 days); fine when parked, weaker while driving.")
@@ -197,6 +200,20 @@ class Pipeline:
         step(6, f"{sr.name}: writing trajectory")
         sr.trajectory_csv = _write_trajectory(work / f"{sr.name}_PPK_trajectory_WGS84.csv", pcs, f, week, rate_hz)
         self.log(f"Trajectory: {sr.trajectory_csv}")
+
+    def _log_cross_check(self, cc: multibase.CrossCheck):
+        for site, p in cc.per_base.items():
+            self.log(f"{site}: {p['fix']} fixed epochs - confirmed by another base {p['confirmed']}, checked "
+                     f"against floats {p['float_checked']}, unchecked {p['unchecked']}, thrown out {p['rejected']}")
+        for p in cc.pairs:
+            self.log(f"{p['a']} vs {p['b']} ({p['kind']}, {p['epochs']} epochs): horizontal median "
+                     f"{p['h_median']:.3f} m, 95% {p['h_95']:.3f} m; vertical median {p['v_median']:+.3f} m, "
+                     f"95% {p['v_95']:.3f} m")
+        q = ppk.quality_summary(cc.pos) if len(cc.pos) else {}
+        self.log(f"Merged PPK (mostly {cc.primary}): " + ", ".join(f"{k} {v:.0f}%" for k, v in q.items()))
+        if cc.accuracy:
+            self.log(f"Realistic accuracy (95%): {cc.accuracy['horizontal']:.3f} m horizontal, "
+                     f"{cc.accuracy['vertical']:.3f} m vertical ({cc.accuracy['basis']})")
 
     def _antex(self, sr) -> Path | None:
         """Antenna calibration file, or None (with a warning) if switched off or unavailable."""
