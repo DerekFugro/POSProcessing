@@ -148,6 +148,18 @@ def write_report(result, path: Path) -> Path:
                        f"<td>{_fmt(mc[0])} / {_fmt(mc[1])} / {_fmt(mc[2])}</td>"
                        f"<td style='text-align:left'>{note}</td></tr>")
         out.append("</table>")
+    if result.marks:
+        out.append("<h2>Surveyor image CSVs (marks)</h2><table><tr><th>Mark</th><th>Rows updated</th>"
+                   "<th>Fixed</th><th>Quality</th><th>Mean change N/E/Up (m)</th><th>File / notes</th></tr>")
+        for m in result.marks:
+            cls = "ok" if m.quality == "fixed" and not m.warnings else "warn"
+            note = e(str(m.path)) + ("<br>" + "<br>".join(e(w) for w in m.warnings) if m.warnings else "")
+            n, ea, u = m.shift_neu
+            out.append(f"<tr><td class='{cls}'>{e(m.label)}</td><td>{m.updated} / {m.rows}</td>"
+                       f"<td>{m.fixed_pct:.0f}%</td><td class='{cls}'>{e(m.quality)}</td>"
+                       f"<td>{_fmt(n)} / {_fmt(ea)} / {_fmt(u)}</td><td style='text-align:left'>{note}</td></tr>")
+        out.append("</table><p class='note'>Each updated CSV has its original kept as .csv.old and its own "
+                   "report (_PPK_report.html) next to it. Roll, pitch and heading stay real-time.</p>")
     out.append("</body></html>")
     path.write_text("\n".join(out), encoding="utf-8")
     return path

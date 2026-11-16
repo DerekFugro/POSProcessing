@@ -42,6 +42,7 @@ TCP 5603). Owner: Derek Pescod (hardware / field). Repo: github.com/DerekFugro/P
 | `posproc/display.py` | UDP 5600 display listener + health grading |
 | `packaging/` | Installer: `build.ps1` (PyInstaller + Inno Setup -> `packaging\Output\POSProcessing_Setup_<ver>.exe`), `POSProcessing.spec`, `POSProcessing.iss`. Installed: `ACSApps\POSProcessing`; data: `ProgramData\Fugro Roadware\POSProcessing` (`posproc/config.py`) |
 | `posproc/stdio.py` | stdin/stdout for the windowless exe (`--surveyor`, `--cli`) |
+| `posproc/marklog.py` | After processing: mark CSVs get post-processed positions (original -> `.csv.old`) + per-mark report |
 | `posproc/control.py`, `posproc/marks.py` | Line protocol and mark CSVs for apps that control recording (Surveyor) - see `docs/Comunication4OtherApps.md` |
 | `posproc/cli.py` | `python -m posproc.cli --pcs ... --csv ... --out ...` |
 | `posproc/config.py` | `Settings` dataclass <-> `settings.json` (per PC, not in git) |

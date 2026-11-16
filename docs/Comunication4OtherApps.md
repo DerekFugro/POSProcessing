@@ -278,6 +278,30 @@ Notes on the values:
 4. At the end: send `stop` (or `quit`). Save `session_folder` with the calibration job - it is
    the input for post-processing later.
 
+Field plan (Derek, 2026-11-16): start logging, ~5 min static, drive 1-2 km around the block,
+then 5-7 positions with a 5-minute mark each, then a 5-minute static sit and `stop`. The whole
+run is one recording (45-60 min); post-processing needs that length to fix reliably
+(5-11 minute recordings on 2026-11-15 did not).
+
+## After post-processing: the mark CSVs are updated (2026-11-16)
+
+Processing the session (next day, once NOAA has posted the base data) also updates every mark
+CSV listed in `<session_folder>\marks.csv`:
+
+- The original is renamed `<name>.csv.old` (kept once; re-processing reads from it again).
+- A new `<name>.csv` is written **in the same format** (same columns, same rows, same times).
+  `lat_deg`, `lon_deg`, `height_m` are post-processed (POS reference point, ellipsoidal height,
+  ITRF2020 ~ WGS84). `rms_n_m`, `rms_e_m`, `rms_d_m` are the post-processed 1-sigma, never below
+  the realistic base-to-base accuracy. `roll_deg`, `pitch_deg`, `heading_deg`, `speed_mps`,
+  `align_status`, `light`, `message` stay the real-time values (raw IMU cannot be re-processed).
+- `<name>_PPK_report.html` next to it says how good that stop is: `fixed` (90%+ of the stop
+  fixed, centimetres) or `float` (decimetres, with the realistic accuracy), and the mean change
+  from real-time.
+- So Surveyor can tell a processed CSV by the `.csv.old` next to it. A mark outside the
+  processed data is left untouched (no `.old`).
+- Files are found next to the session folder first (same relative layout), so a copied run
+  folder updates the copy, never the original.
+
 ## Where this lives in the code
 
 | File | What |

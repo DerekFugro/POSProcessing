@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import antenna, convert, cors, multibase, ppk, rt27
+from . import antenna, convert, cors, marklog, multibase, ppk, rt27
 from .config import Settings
 from .csvlog import CsvMatch, CsvMatcher
 from .fuse import FusionResult, fuse
@@ -55,6 +55,7 @@ class RunResult:
     csv: list[CsvMatch] = field(default_factory=list)
     report_html: Path | None = None
     frame: str = FRAME_NOTE
+    marks: list[marklog.MarkUpdate] = field(default_factory=list)   # Surveyor image CSVs updated
 
 
 class Pipeline:
@@ -81,6 +82,13 @@ class Pipeline:
                 result.csv = self._run_csv(good, csv_files, out_dir)
             else:
                 self.log("CSV logs skipped: no session was post-processed.")
+        mark_dirs = {Path(f).parent for f in pcs_files if (Path(f).parent / marklog.MARKS_LIST).exists()}
+        if mark_dirs:
+            self.progress(0.97, "Updating mark CSVs")
+            if good:
+                result.marks = marklog.update_marks(mark_dirs, good, self.log)
+            else:
+                self.log("Mark CSVs not updated: no session was post-processed.")
         from .report import write_report
         result.report_html = write_report(result, out_dir / "PPK_Report.html")
         self.log(f"Report: {result.report_html}")
